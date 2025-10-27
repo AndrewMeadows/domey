@@ -20,7 +20,7 @@ class Polyhedron:
 
     VALID_SHAPES = {
         'tetrahedron',
-        'cube',
+        'cube',         # aka hexahedron
         'hexahedron',
         'octahedron',
         'dodecahedron',
@@ -32,7 +32,7 @@ class Polyhedron:
         Initialize a polyhedron with an optional shape type.
 
         Args:
-            shape_type: Optional string specifying the shape ('tetrahedron', 'cube',
+            shape_type: Optional string specifying the shape ('tetrahedron', 'hexahedron',
                        'hexahedron', 'octahedron', 'dodecahedron', 'icosahedron').
                        If None, creates an empty polyhedron that must be initialized
                        manually using one of the init methods.
@@ -40,7 +40,9 @@ class Polyhedron:
         Raises:
             ValueError: If shape_type is not a valid shape name.
         """
-        self.vertices = []
+        self.vertices = []          # vertex points
+        self.edges = []             # pairs of vertex indices connected by line segment
+        self.connections = []       # for each vertex index: list of other vertex indices connected by edges
         self.shape_name = ""
 
         if shape_type is not None:
@@ -63,6 +65,9 @@ class Polyhedron:
 
             shape_map[shape_type_lower]()
 
+        self.orientAndAlign()
+        self.computeConnectivity()
+
     def initTetrahedron(self):
         """
         Initialize vertices for a regular tetrahedron.
@@ -80,12 +85,12 @@ class Polyhedron:
 
     def initHexahedron(self):
         """
-        Initialize vertices for a cube (hexahedron).
+        Initialize vertices for a hexahedron (aka cube).
 
-        The eight vertices of a cube centered at the origin are:
+        The eight vertices of a hexahedron centered at the origin are:
         (+/-1, +/-1, +/-1) for all combinations of signs
         """
-        self.shape_name = "cube"
+        self.shape_name = "hexahedron"
         self.vertices = [
             glm.vec3(1, 1, 1),
             glm.vec3(1, 1, -1),
@@ -119,7 +124,7 @@ class Polyhedron:
         Initialize vertices for a regular dodecahedron.
 
         The 20 vertices of a regular dodecahedron centered at the origin are:
-        (±1, ±1, ±1) - 8 vertices of a cube
+        (±1, ±1, ±1) - 8 vertices of a hexahedron
         (0, ±φ, ±1/φ) - 4 vertices
         (±1/φ, 0, ±φ) - 4 vertices
         (±φ, ±1/φ, 0) - 4 vertices
@@ -133,7 +138,7 @@ class Polyhedron:
 
         self.vertices = []
 
-        # (±1, ±1, ±1) - 8 vertices of a cube
+        # (±1, ±1, ±1) - 8 vertices of a hexahedron
         self.vertices.extend([
             glm.vec3(1, 1, 1),
             glm.vec3(1, 1, -1),
@@ -210,7 +215,7 @@ class Polyhedron:
             glm.vec3(-a, 0, -1)
         ])
 
-    def orientAndAlign(self, verbose=True):
+    def orientAndAlign(self, verbose=False):
         """
         Normalize vertices and align them to a standard orientation.
 
@@ -329,9 +334,56 @@ class Polyhedron:
         # Replace original vertices with aligned vertices
         self.vertices = aligned_vertices
 
-    def getVertices(self):
-        """Return the vertices."""
-        return self.vertices
+    def computeConnectivity(self, verbose=False):
+        """
+        Compute Edges between Vertices based on distance.
+
+        An Edge connects two Vertices if their distance is within a scalar multiple of
+        a reference Edge length. The reference Edge length is the minimum distance
+        from Vertex 0 to all other Vertices.
+        Each Edge is stored as a tuple (i, j) where i < j.
+        """
+        if len(self.vertices) < 2:
+            print("Error: Need at least 2 Vertices to compute edges.")
+            self.edges = []
+            return self.edges
+
+        # Find minimum distance from vertex 0 to any other vertex
+        v0 = self.vertices[0]
+        min_dist = float('inf')
+        for i in range(1, len(self.vertices)):
+            dist = glm.distance(v0, self.vertices[i])
+            if dist < min_dist:
+                min_dist = dist
+        if verbose:
+            print(f"\nMinDistance={min_dist}")
+
+        edge_length = min_dist
+        threshold = 1.4 * edge_length
+
+        # For each Vertex its Connections is a list of Edges (by index) that share the Vertex.
+        # We initialize the all of Connections here and fill them as Edges are found.
+        self.connections = []
+        for vertex in self.vertices:
+            self.connections.append([])
+
+        # For each Vertex, check all Vertices with higher indices
+        self.edges = []
+        num_edges = 0
+        for i in range(len(self.vertices)):
+            for j in range(i + 1, len(self.vertices)):
+                dist = glm.distance(self.vertices[i], self.vertices[j])
+                if dist <= threshold:
+                    # Add Edge with lower index first
+                    self.edges.append((i, j))
+                    # Add Edge index to connections
+                    self.connections[i].append(num_edges)
+                    self.connections[j].append(num_edges)
+                    num_edges += 1
+        if verbose:
+            print("Edges:")
+            for edge in self.edges:
+                print(f"{edge}")
 
 
 # Example usage
@@ -339,7 +391,7 @@ if __name__ == "__main__":
     # Test all five Platonic solids using the new constructor API
     shapes = [
         "tetrahedron",
-        "cube",
+        "hexahedron",
         "octahedron",
         "dodecahedron",
         "icosahedron"
@@ -350,5 +402,6 @@ if __name__ == "__main__":
         print(shape_name.upper())
         print("=" * 60)
         shape = Polyhedron(shape_name)
-        shape.orientAndAlign()
+        shape.orientAndAlign(verbose=True)
+        shape.computeConnectivity(verbose=True)
         print("\n")
