@@ -92,16 +92,35 @@ class Geodesic(Polyhedron):
 
 # Example usage
 if __name__ == "__main__":
-    shape_name = "tetrahedron"
+    shapes = [
+        "tetrahedron",
+        "hexahedron",
+        "octahedron",
+        "dodecahedron",
+        "icosahedron"
+    ]
+
+    # corresponding twist angles which produce intersections
+    # at points 1/3 the length of the arcs
+    angles = [
+        0.3598,
+        0.3103,
+        0.5485,
+        0.2908,
+        0.6534
+    ]
+
+    index = 4
+    shape_name = shapes[index]
 
     # Create a geodesic dome
+    verbose = True
     dome = Geodesic(shape_name)
-    dome.orientAndAlign(verbose=True)
-    dome.computeEdges(verbose=True)
-    dome.computeFaces(verbose=True)
+    dome.orientAndAlign(verbose)
+    dome.computeEdges(verbose)
+    dome.computeFaces(verbose)
 
     # twist the arcs
-    #twist_angle = math.pi/20.0
-    twist_angle = 0.3595
-    arcs = dome.computeTwistedArcs(twist_angle, verbose=True)
+    twist_angle = angles[index]
+    arcs = dome.computeTwistedArcs(twist_angle, verbose)
 
