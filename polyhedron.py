@@ -7,6 +7,14 @@
 
 import math
 import glm
+from face import Face
+
+# helper
+def sort_indices(index_list):
+    """Rotate the index_list to make the lowest element first."""
+    min_value = min(index_list)
+    min_index = index_list.index(min_value)
+    return index_list[min_index:] + index_list[:min_index]
 
 
 class Polyhedron:
@@ -43,6 +51,7 @@ class Polyhedron:
         self.vertices = []          # vertex points
         self.edges = []             # pairs of vertex indices connected by line segment
         self.connections = []       # for each vertex index: list of other vertex indices connected by edges
+        self.faces = []             # faces of the polyhedron
         self.shape_name = ""
 
         if shape_type is not None:
@@ -66,7 +75,7 @@ class Polyhedron:
             shape_map[shape_type_lower]()
 
         self.orientAndAlign()
-        self.computeConnectivity()
+        self.computeEdges()
 
     def initTetrahedron(self):
         """
@@ -238,9 +247,10 @@ class Polyhedron:
         normalized_vertices = [glm.normalize(vertex) for vertex in self.vertices]
 
         if verbose:
-            print(f"\nAll normalized {self.shape_name} vertices:")
+            print(f"\n{self.shape_name}:")
+            print(f"\nVertices:")
             for i, vertex in enumerate(normalized_vertices):
-                print(f"Vertex {i:2}: ({vertex.x:8.5f}, {vertex.y:8.5f}, {vertex.z:8.5f})")
+                print(f" {i:2} ({vertex.x:8.5f}, {vertex.y:8.5f}, {vertex.z:8.5f})")
 
         # Check if any vertex is already aligned with z-axis
         z_axis = glm.vec3(0, 0, 1)
@@ -269,16 +279,13 @@ class Polyhedron:
             # Create quaternion from angle and axis
             Q = glm.angleAxis(angle, axis)
 
-            if verbose:
-                print(f"\nQuaternion Q: ({Q.w:8.5f}, {Q.x:8.5f}, {Q.y:8.5f}, {Q.z:8.5f})")
-
             # Apply rotation Q to all normalized vertices
             rotated_vertices = [Q * vertex for vertex in normalized_vertices]
 
             if verbose:
                 print("\nRotated vertices:")
                 for i, vertex in enumerate(rotated_vertices):
-                    print(f"Vertex {i:2}: ({vertex.x:8.5f}, {vertex.y:8.5f}, {vertex.z:8.5f})")
+                    print(f" {i:2} ({vertex.x:8.5f}, {vertex.y:8.5f}, {vertex.z:8.5f})")
 
             # Check if v1 needs rotation to align with YZ plane
             v1 = rotated_vertices[1]
@@ -302,39 +309,47 @@ class Polyhedron:
                 # Create quaternion from angle and axis
                 Q2 = glm.angleAxis(angle2, axis2)
 
-                if verbose:
-                    print(f"\nQuaternion Q2: ({Q2.w:8.5f}, {Q2.x:8.5f}, {Q2.y:8.5f}, {Q2.z:8.5f})")
-
                 # Apply rotation Q2 to all rotated vertices
                 aligned_vertices = [Q2 * vertex for vertex in rotated_vertices]
-
-                if verbose:
-                    print("\nAligned vertices:")
-                    for i, vertex in enumerate(aligned_vertices):
-                        print(f"Vertex {i:2}: ({vertex.x:8.5f}, {vertex.y:8.5f}, {vertex.z:8.5f})")
             else:
-                if verbose:
-                    print(f"\nVertex 1 x-component ({v1.x:.6f}) is already close to YZ plane - no rotation needed.")
                 aligned_vertices = rotated_vertices
 
-                if verbose:
-                    print("\nAligned vertices (same as rotated vertices):")
-                    for i, vertex in enumerate(aligned_vertices):
-                        print(f"Vertex {i:2}: ({vertex.x:8.5f}, {vertex.y:8.5f}, {vertex.z:8.5f})")
         else:
-            if verbose:
-                print("\nOne of the vertices is already aligned with the z-axis - no rotation needed.")
             aligned_vertices = normalized_vertices
 
-            if verbose:
-                print("\nAligned vertices (same as normalized vertices):")
-                for i, vertex in enumerate(aligned_vertices):
-                    print(f"Vertex {i:2}: ({vertex.x:8.5f}, {vertex.y:8.5f}, {vertex.z:8.5f})")
-
-        # Replace original vertices with aligned vertices
+        # Replace original vertices with aligned vertices, then sort
         self.vertices = aligned_vertices
+        self.sortVertices()
 
-    def computeConnectivity(self, verbose=False):
+        if verbose:
+            print("\nAligned and sorted vertices:")
+            for i, vertex in enumerate(aligned_vertices):
+                print(f" {i:2} ({vertex.x:8.5f}, {vertex.y:8.5f}, {vertex.z:8.5f})")
+
+
+    def sortVertices(self):
+        """
+        Sort vertices using two criteria:
+        1. Z-component (descending - more positive values first)
+        2. Angle in XY plane relative to x-axis (range [0, 2π])
+
+        The angle is computed using atan2(y, x) and normalized to [0, 2π].
+        """
+        def sort_key(vertex):
+            # Primary sort: z-component, descending (negate for descending order)
+            z = -vertex.z
+
+            # Secondary sort: angle in XY plane [0, 2π]
+            angle = math.atan2(vertex.y, vertex.x)
+            # Normalize to [0, 2π] range
+            if angle < 0:
+                angle += 2 * math.pi
+
+            return (z, angle)
+
+        self.vertices.sort(key=sort_key)
+
+    def computeEdges(self, verbose=False):
         """
         Compute Edges between Vertices based on distance.
 
@@ -355,17 +370,9 @@ class Polyhedron:
             dist = glm.distance(v0, self.vertices[i])
             if dist < min_dist:
                 min_dist = dist
-        if verbose:
-            print(f"\nMinDistance={min_dist}")
 
         edge_length = min_dist
         threshold = 1.4 * edge_length
-
-        # For each Vertex its Connections is a list of Edges (by index) that share the Vertex.
-        # We initialize the all of Connections here and fill them as Edges are found.
-        self.connections = []
-        for vertex in self.vertices:
-            self.connections.append([])
 
         # For each Vertex, check all Vertices with higher indices
         self.edges = []
@@ -376,14 +383,125 @@ class Polyhedron:
                 if dist <= threshold:
                     # Add Edge with lower index first
                     self.edges.append((i, j))
-                    # Add Edge index to connections
-                    self.connections[i].append(num_edges)
-                    self.connections[j].append(num_edges)
                     num_edges += 1
         if verbose:
-            print("Edges:")
-            for edge in self.edges:
-                print(f"{edge}")
+            print("\nEdges:")
+            for i in range(len(self.edges)):
+                edge = self.edges[i]
+                print(f" {i:2} {edge}")
+
+    def computeFaces(self, verbose=False):
+        """
+        Compute faces of the polyhedron.
+
+        For each vertex, find all faces formed by edges connecting to that vertex.
+        A face exists when a loop of vertices are mutually connected on a common plane.
+
+        Each face is stored only once with vertices in right-handed order, lowest index first.
+        """
+        if len(self.vertices) < 3:
+            print("Error: Need at least 3 vertices to compute faces.")
+            self.faces = []
+            return
+
+        if len(self.edges) < 3:
+            print("Error: Need at least 3 edges to compute faces. Call computeEdges() first.")
+            self.faces = []
+            return
+
+        # Build adjacency list: for each vertex, list of connected vertices
+        adjacency = [set() for _ in range(len(self.vertices))]
+        for i, j in self.edges:
+            adjacency[i].add(j)
+            adjacency[j].add(i)
+
+        if verbose:
+            print(f"\nVertex neighbors:")
+            for i in range(len(adjacency)):
+                neighbors = adjacency[i]
+                print(f" {i:2} {neighbors}")
+
+        # Find all faces
+        loop_set = set()
+        for b in range(len(self.vertices)):
+            # Get all vertices connected to vertex i
+            neighborsB = list(adjacency[b])
+
+            for a in neighborsB:
+                AB = self.vertices[b] - self.vertices[a]
+
+                num_faces_found = 0
+                for c in neighborsB:
+                    if c == a:
+                        continue
+                    BC = self.vertices[c] - self.vertices[b]
+
+                    # ABC starts Face iff all other neighborsB are on one side of the ABC plane
+                    axisABC = glm.normalize(glm.cross(AB, BC))
+                    num_positive = 0
+                    num_negative = 0
+                    c_starts_face = True
+                    for d in neighborsB:
+                        if d == a or d == c:
+                            continue
+                        BD = self.vertices[d] - self.vertices[b]
+                        if glm.dot(axisABC, BD) < 0:
+                            num_negative += 1
+                            if num_positive > 0:
+                                c_starts_face = False
+                                break
+                        else:
+                            num_positive += 1
+                            if num_negative > 0:
+                                c_starts_face = False
+                                break
+
+                    if c_starts_face:
+                        loop_indices = [a, b, c]
+                        d = b
+                        e = c
+                        DE = self.vertices[e] - self.vertices[d]
+                        while e != a:
+                            neighborsE = list(adjacency[e])
+                            for f in neighborsE:
+                                if f == a:
+                                    e = f
+                                    break
+                                if f in loop_indices:
+                                    continue
+                                EF = self.vertices[f] - self.vertices[e]
+                                axisDEF = glm.normalize(glm.cross(DE, EF))
+                                dot_error = math.fabs(1.0 - math.fabs(glm.dot(axisABC, axisDEF)))
+                                if math.fabs(1.0 - math.fabs(glm.dot(axisABC, axisDEF))) < 0.001:
+                                    # f is on the Face plane
+                                    loop_indices.append(f)
+                                    e = f
+                                    break
+
+                        # rotate indices to make lowest index first
+                        loop_indices = sort_indices(loop_indices)
+
+                        # make sure loop is right-handed
+                        JK = self.vertices[loop_indices[1]] - self.vertices[loop_indices[0]]
+                        KL = self.vertices[loop_indices[2]] - self.vertices[loop_indices[1]]
+                        axisJKL = glm.normalize(glm.cross(JK, KL))
+                        if glm.dot(self.vertices[loop_indices[0]], axisJKL) < 0.0:
+                            # this is a left-handed loop and we need to make it right-handed
+                            # keep the first loop element where it is but reverse the order of the rest
+                            loop_indices = [loop_indices[0]] + loop_indices[1:][::-1]
+
+                        loop_set.add(tuple(loop_indices))
+                        num_faces_found += 1
+                        if num_faces_found == 2:
+                            break;
+
+        # Convert set to list of Face objects
+        self.faces = [Face(loop) for loop in sorted(loop_set)]
+
+        if verbose:
+            print("\nFaces:")
+            for i, face in enumerate(self.faces):
+                print(f" {i:2} {face}")
 
 
 # Example usage
@@ -403,5 +521,6 @@ if __name__ == "__main__":
         print("=" * 60)
         shape = Polyhedron(shape_name)
         shape.orientAndAlign(verbose=True)
-        shape.computeConnectivity(verbose=True)
+        shape.computeEdges(verbose=True)
+        shape.computeFaces(verbose=True)
         print("\n")
