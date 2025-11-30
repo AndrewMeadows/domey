@@ -1,10 +1,10 @@
 #
 # geodesic.py -- Geodesic dome implementation derived from Polyhedron
 #
-# This class extends the Polyhedron class to create geodesic structures
-# by subdividing the faces of regular polyhedra and providing "twisted"
-# versions where the faces are rotated to produce "truncated" faces at
-# the old vertices.
+# This class extends the Polyhedron class to create geodesic spheres
+# based on the five regular polyhedra and providing "twisted" versions
+# where the base faces are rotated to introduce "truncated" faces at the
+# base vertices.
 #
 
 import math
@@ -15,10 +15,10 @@ from arc import Arc, angle_between
 
 class Geodesic(Polyhedron):
     """
-    A class representing a geodesic dome structure.
+    A class representing a geodesic sphere based on a regular polyhedron.
 
-    Inherits from Polyhedron and adds methods for subdividing faces
-    and creating geodesic structures.
+    Inherits from Polyhedron and adds methods for twisting arcs to produce
+    "twisted and truncated" structures.
     """
 
     def __init__(self, shape_type=None):
