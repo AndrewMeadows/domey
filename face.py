@@ -30,7 +30,7 @@ class Face:
         indices_str = ", ".join(str(idx) for idx in self.vertex_indices)
         return f"({indices_str})"
 
-    def num_vertices(self):
+    def numVertices(self):
         """
         Return the number of vertices in this face.
 
@@ -39,7 +39,7 @@ class Face:
         """
         return len(self.vertex_indices)
 
-    def contains_vertex(self, vertex_index):
+    def containsVertex(self, vertex_index):
         """
         Check if the face contains a given vertex index.
 
@@ -51,7 +51,7 @@ class Face:
         """
         return vertex_index in self.vertex_indices
 
-    def contains_edge(self, edge):
+    def containsEdge(self, edge):
         """
         Check if the face contains a given edge.
 
@@ -64,7 +64,7 @@ class Face:
         i, j = edge
         return i in self.vertex_indices and j in self.vertex_indices
 
-    def get_edges(self):
+    def getEdges(self):
         """
         Returns:
             Array of Edges (pairs of indices into a Polyhedron's vertex list) in right-hand order.

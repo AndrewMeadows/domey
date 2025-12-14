@@ -12,6 +12,7 @@ import glm
 from polyhedron import Polyhedron
 from arc import Arc, angle_between
 
+RAD_TO_DEG = 180.0 / math.pi
 
 class Geodesic(Polyhedron):
     """
@@ -44,7 +45,7 @@ class Geodesic(Polyhedron):
         arcs = []
         arc_index = 0
         if verbose:
-            print(f"\nTwist arcs with angle={angle}")
+            print(f"\nTwist arcs with angle={angle:.4} ({angle * RAD_TO_DEG:.4} degrees)")
         for edge in self.edges:
             i = edge[0]
             j = edge[1]
@@ -61,7 +62,7 @@ class Geodesic(Polyhedron):
 
         # For each Face trim and intersect each Arc against its neighbors
         for face in self.faces:
-            edges = face.get_edges()
+            edges = face.getEdges()
             # Find the indices of the Face edges
             edge_indices = []
             for edge in edges:
@@ -89,6 +90,28 @@ class Geodesic(Polyhedron):
                 print(f" {i:2} l={arc_length} d={trims} i={intersections} ri={relative_intersections}")
 
         return arcs
+
+
+    def computeIntersectionAngle(self, arcs):
+        """
+        Computes the small angle between two adjacent arcs.
+        """
+        angle = 0.0
+        if len(self.faces) > 0:
+            face = self.faces[0]
+            edges = face.getEdges()
+
+            # Find the indices of the Face edges
+            edge_indices = []
+            for edge in edges:
+                for i in range(len(self.edges)):
+                    if edge == self.edges[i]:
+                        edge_indices.append(i)
+            arcA = arcs[edge_indices[0]]
+            arcB = arcs[edge_indices[1]]
+            angle = arcA.getIntersectionAngle(arcB)
+        return angle
+
 
 # Example usage
 if __name__ == "__main__":
@@ -124,4 +147,7 @@ if __name__ == "__main__":
         # Twist the arcs
         twist_angle = angles[i]
         arcs = dome.computeTwistedArcs(twist_angle, verbose=True)
+        intersection_angle = dome.computeIntersectionAngle(arcs)
+
+        print(f"\nintersection_angle={intersection_angle:.4} ({intersection_angle * RAD_TO_DEG:.4} degrees)")
 
