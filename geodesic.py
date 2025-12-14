@@ -100,7 +100,7 @@ if __name__ == "__main__":
         "icosahedron"
     ]
 
-    # corresponding twist angles which produce intersections
+    # Corresponding twist angles which produce intersections
     # at points 1/3 the length of the arcs
     angles = [
         0.3598,
@@ -110,17 +110,18 @@ if __name__ == "__main__":
         0.6534
     ]
 
-    index = 4
-    shape_name = shapes[index]
+    verbose = False
 
-    # Create a geodesic dome
-    verbose = True
-    dome = Geodesic(shape_name)
-    dome.orientAndAlign(verbose)
-    dome.computeEdges(verbose)
-    dome.computeFaces(verbose)
+    for i in range(len(shapes)):
+        shape_name = shapes[i]
 
-    # twist the arcs
-    twist_angle = angles[index]
-    arcs = dome.computeTwistedArcs(twist_angle, verbose)
+        # Create a geodesic dome
+        dome = Geodesic(shape_name)
+        dome.orientAndAlign(verbose)
+        dome.computeEdges(verbose)
+        dome.computeFaces(verbose)
+
+        # Twist the arcs
+        twist_angle = angles[i]
+        arcs = dome.computeTwistedArcs(twist_angle, verbose=True)
 
