@@ -30,10 +30,10 @@ def _get_geodesic(shape_name: str, twist: float) -> Geodesic:
     return g
 
 
-def _edge_vertices(g: Geodesic) -> np.ndarray:
-    pairs = np.empty((len(g.edges) * 2, 3), dtype=np.float32)
-    for k, (i, j) in enumerate(g.edges):
-        a, b = g.vertices[i], g.vertices[j]
+def _edge_vertices(polyhedron) -> np.ndarray:
+    pairs = np.empty((len(polyhedron.edges) * 2, 3), dtype=np.float32)
+    for k, (i, j) in enumerate(polyhedron.edges):
+        a, b = polyhedron.vertices[i], polyhedron.vertices[j]
         pairs[2 * k] = (a.x, a.y, a.z)
         pairs[2 * k + 1] = (b.x, b.y, b.z)
     return pairs
@@ -41,8 +41,8 @@ def _edge_vertices(g: Geodesic) -> np.ndarray:
 
 def _arc_data_from_arcs(arcs) -> tuple[np.ndarray, np.ndarray]:
     """Returns (arc_line_pairs, intersection_points) from pre-computed arcs."""
-    segments_per_arc = ARC_SAMPLES - 1
-    pairs_per_arc = segments_per_arc * 2  # GL_LINES needs both endpoints per segment
+    edges_per_arc = ARC_SAMPLES - 1
+    pairs_per_arc = edges_per_arc * 2  # GL_LINES needs both endpoints per edge
     arc_verts = np.empty((len(arcs) * pairs_per_arc, 3), dtype=np.float32)
     # Each arc contributes two intersection points (one per end); duplicates
     # with the neighboring arc are accepted as harmless overdraw.
@@ -81,12 +81,12 @@ def _sample_arc(arc, start: float, end: float, n: int) -> list[tuple[float, floa
     return out
 
 
-def _face_triangles(g, arcs) -> np.ndarray:
+def _face_triangles(polyhedron, arcs) -> np.ndarray:
     """Sample each face's twisted arc boundary, fan-triangulate from centroid."""
-    edge_to_arc = {edge: i for i, edge in enumerate(g.edges)}
+    edge_to_arc = {edge: i for i, edge in enumerate(polyhedron.edges)}
     triangles: list[tuple[float, float, float]] = []
 
-    for face in g.faces:
+    for face in polyhedron.faces:
         face_edges = face.getEdges()
 
         # Walk the face's arcs and concatenate boundary samples in order. For
@@ -137,11 +137,11 @@ def _sq_dist(a: tuple[float, float, float], b: tuple[float, float, float]) -> fl
 
 def build_geometry(inputs: GeometryInputs) -> GeometryBuffers:
     g = _get_geodesic(inputs.shape_name, inputs.twist_angle)
-    #arcs = g.computeTwistedArcs(inputs.twist_angle)
+    polyhedron = g.getPolyhedron()
     arc_verts, point_verts = _arc_data_from_arcs(g.arcs)
-    face_tris = _face_triangles(g, g.arcs)
+    face_tris = _face_triangles(polyhedron, g.arcs)
     return GeometryBuffers(
-        edge_vertices=_edge_vertices(g),
+        edge_vertices=_edge_vertices(polyhedron),
         arc_vertices=arc_verts,
         intersection_points=point_verts,
         face_triangles=face_tris,
