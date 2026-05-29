@@ -7,7 +7,7 @@
 
 import math
 import glm
-from face import Face
+from meshics.face import Face
 
 # helper
 def sort_indices(index_list):
@@ -35,7 +35,7 @@ class Polyhedron:
         'icosahedron'
     }
 
-    def __init__(self, shape_type=None):
+    def __init__(self, shape_type=None, verbose=False):
         """
         Initialize a polyhedron with an optional shape type.
 
@@ -48,6 +48,7 @@ class Polyhedron:
         Raises:
             ValueError: If shape_type is not a valid shape name.
         """
+        self.verbose = verbose
         self.vertices = []          # vertex points
         self.edges = []             # pairs of vertex indices connected by line segment
         self.connections = []       # for each vertex index: list of other vertex indices connected by edges
@@ -74,8 +75,9 @@ class Polyhedron:
 
             shape_map[shape_type_lower]()
 
-        self.orientAndAlign()
-        self.computeEdges()
+        self._orientAndAlign()
+        self._computeEdges()
+        self._computeFaces()
 
     def initTetrahedron(self):
         """
@@ -224,7 +226,7 @@ class Polyhedron:
             glm.vec3(-a, 0, -1)
         ])
 
-    def orientAndAlign(self, verbose=False):
+    def _orientAndAlign(self):
         """
         Normalize vertices and align them to a standard orientation.
 
@@ -234,19 +236,16 @@ class Polyhedron:
         3. Rotates around the z-axis so the second vertex lies in the YZ plane
 
         The aligned vertices replace the original vertices.
-
-        Args:
-            verbose: If True, print detailed information about the process
         """
         if not self.vertices:
-            if verbose:
+            if self.verbose:
                 print("Error: No vertices to process. Call an init method first.")
             return
 
         # Normalize all vertices to unit length
         normalized_vertices = [glm.normalize(vertex) for vertex in self.vertices]
 
-        if verbose:
+        if self.verbose:
             print(f"\n{self.shape_name}:")
             print(f"\nVertices:")
             for i, vertex in enumerate(normalized_vertices):
@@ -282,7 +281,7 @@ class Polyhedron:
             # Apply rotation Q to all normalized vertices
             rotated_vertices = [Q * vertex for vertex in normalized_vertices]
 
-            if verbose:
+            if self.verbose:
                 print("\nRotated vertices:")
                 for i, vertex in enumerate(rotated_vertices):
                     print(f" {i:2} ({vertex.x:8.5f}, {vertex.y:8.5f}, {vertex.z:8.5f})")
@@ -319,15 +318,15 @@ class Polyhedron:
 
         # Replace original vertices with aligned vertices, then sort
         self.vertices = aligned_vertices
-        self.sortVertices()
+        self._sortVertices()
 
-        if verbose:
+        if self.verbose:
             print("\nAligned and sorted vertices:")
             for i, vertex in enumerate(aligned_vertices):
                 print(f" {i:2} ({vertex.x:8.5f}, {vertex.y:8.5f}, {vertex.z:8.5f})")
 
 
-    def sortVertices(self):
+    def _sortVertices(self):
         """
         Sort vertices using two criteria:
         1. Z-component (descending - more positive values first)
@@ -349,7 +348,7 @@ class Polyhedron:
 
         self.vertices.sort(key=sort_key)
 
-    def computeEdges(self, verbose=False):
+    def _computeEdges(self):
         """
         Compute Edges between Vertices based on distance.
 
@@ -384,13 +383,13 @@ class Polyhedron:
                     # Add Edge with lower index first
                     self.edges.append((i, j))
                     num_edges += 1
-        if verbose:
+        if self.verbose:
             print("\nEdges:")
             for i in range(len(self.edges)):
                 edge = self.edges[i]
                 print(f" {i:2} {edge}")
 
-    def computeFaces(self, verbose=False):
+    def _computeFaces(self):
         """
         Compute faces of the polyhedron.
 
@@ -415,7 +414,7 @@ class Polyhedron:
             adjacency[i].add(j)
             adjacency[j].add(i)
 
-        if verbose:
+        if self.verbose:
             print(f"\nVertex neighbors:")
             for i in range(len(adjacency)):
                 neighbors = adjacency[i]
@@ -498,7 +497,7 @@ class Polyhedron:
         # Convert set to list of Face objects
         self.faces = [Face(loop) for loop in sorted(loop_set)]
 
-        if verbose:
+        if self.verbose:
             print("\nFaces:")
             for i, face in enumerate(self.faces):
                 print(f" {i:2} {face}")
@@ -519,8 +518,8 @@ if __name__ == "__main__":
         print("=" * 60)
         print(shape_name.upper())
         print("=" * 60)
-        shape = Polyhedron(shape_name)
-        shape.orientAndAlign(verbose=True)
-        shape.computeEdges(verbose=True)
-        shape.computeFaces(verbose=True)
+        shape = Polyhedron(shape_name, verbose=True)
+        shape._orientAndAlign()
+        shape._computeEdges()
+        shape._computeFaces()
         print("\n")

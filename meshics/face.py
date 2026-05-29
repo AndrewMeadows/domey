@@ -9,7 +9,8 @@ class Face:
     A class representing a polygonal face of a polyhedron.
 
     Stores a list of vertex indices that define the face. The indices reference
-    vertices in a Polyhedron's vertex list.
+    vertices in a Polyhedron's vertex list.  The first index is always the lowest
+    value and the list defines the right-handed traversal of the face edges.
     """
 
     def __init__(self, vertex_indices):
@@ -67,7 +68,10 @@ class Face:
     def getEdges(self):
         """
         Returns:
-            Array of Edges (pairs of indices into a Polyhedron's vertex list) in right-hand order.
+            Array of Edges (pairs of indices into a Polyhedron's vertex list). The edges
+            are sorted by traversal, but the indices inside are alway sorted by value:
+            low then high. In other words: if you need the traversal order, just use
+            the vertex_indices list.
         """
         edges = []
         for i in range(len(self.vertex_indices) - 1):

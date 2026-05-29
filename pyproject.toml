@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "domey"
 version = "0.1.0"
-description = "A Python module for computing vertices and segments of multi-frequency geodesic shapes"
+description = "Compute and visualize vertices and arcs of geodesic spheres based on twist-truncated regular polyhedra"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
@@ -26,15 +26,26 @@ classifiers = [
 ]
 keywords = ["geodesic", "polyhedron", "geometry", "dome", "platonic-solids"]
 
+# meshics is pure Python; geodesics adds PyGLM. The app/viewer stack lives in
+# the optional "app" extra so the compute library installs without OpenGL deps.
 dependencies = [
     "PyGLM>=2.5.0",
 ]
 
 [project.optional-dependencies]
+app = [
+    "moderngl>=5.12",
+    "moderngl-window>=3.1",
+    "numpy>=1.24",
+    "imgui-bundle<1.92",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
 ]
+
+[project.scripts]
+domey = "app.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/yourusername/domey"
@@ -42,4 +53,7 @@ Repository = "https://github.com/yourusername/domey"
 Issues = "https://github.com/yourusername/domey/issues"
 
 [tool.setuptools]
-packages = ["domey"]
+packages = ["meshics", "geodesics", "app"]
+
+[tool.setuptools.package-data]
+app = ["shaders/*.vert", "shaders/*.frag"]

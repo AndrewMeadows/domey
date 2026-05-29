@@ -35,7 +35,7 @@ class Arc:
 
     def __init__(self, pivot, point, index=0):
         """
-        Initializes an Arc, then twist it points about its pivot by angle.
+        Initializes an Arc.
 
         Args:
             pivot: point on Arc as glm.vec3, invariant under twist
@@ -81,13 +81,16 @@ class Arc:
     def getAxis(self):
         return glm.normalize(glm.cross(self.pivot, self.point))
 
-    def getEndpoints(self):
+    def getEndPoints(self):
         axis = self.getAxis()
         Q = glm.angleAxis(self.trimA, axis)
         pointA = Q * self.pivot
         Q = glm.angleAxis(self.trimB, axis)
         pointB = Q * self.pivot
         return (pointA, pointB)
+
+    def getIntersectionPoints(self):
+        return [self.getPoint(self.intersectionA), self.getPoint(self.intersectionB)]
 
     def twist(self, angle):
         """

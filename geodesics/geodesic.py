@@ -3,14 +3,14 @@
 #
 # This class extends the Polyhedron class to create geodesic spheres
 # based on the five regular polyhedra and providing "twisted" versions
-# where the base faces are rotated to introduce "truncated" faces at the
-# base vertices.
+# where the arcs of the geodesic faces are rotated to open new
+# "truncated" faces at the base vertices.
 #
 
 import math
 import glm
-from polyhedron import Polyhedron
-from arc import Arc, angle_between
+from .polyhedron import Polyhedron
+from .arc import Arc, angle_between
 
 RAD_TO_DEG = 180.0 / math.pi
 
@@ -22,7 +22,7 @@ class Geodesic(Polyhedron):
     "twisted and truncated" structures.
     """
 
-    def __init__(self, shape_type=None):
+    def __init__(self, shape_type=None, verbose=False):
         """
         Initialize a geodesic dome with an optional base shape type.
 
@@ -31,10 +31,18 @@ class Geodesic(Polyhedron):
                        ('tetrahedron', 'hexahedron', 'octahedron',
                         'dodecahedron', 'icosahedron').
         """
-        super().__init__(shape_type)
+        super().__init__(shape_type, verbose)
+        self.setTwistAngle(0.0)
 
 
-    def computeTwistedArcs(self, angle, verbose=False):
+    def setTwistAngle(self, angle):
+        self.twistAngle = angle
+        self.computeTwistedArcs()
+        self._computeGeoVertices()
+        self._computeArcSegments()
+        self._computeGeodesicFaces()
+
+    def computeTwistedArcs(self):
         """
         For each Edge define an Arc, twist it about its center, and compute its intersection
         with neighboring twisted Arcs.
@@ -44,23 +52,23 @@ class Geodesic(Polyhedron):
         # an endpoint.
         arcs = []
         arc_index = 0
-        if verbose:
-            print(f"\nTwist arcs with angle={angle:.4} ({angle * RAD_TO_DEG:.4} degrees)")
+        if self.verbose:
+            print(f"\nTwist arcs with angle={self.twistAngle:.4} ({self.twistAngle * RAD_TO_DEG:.4} degrees)")
         for edge in self.edges:
             i = edge[0]
             j = edge[1]
             center = glm.normalize(self.vertices[i] + self.vertices[j])
             arcs.append(Arc(center, self.vertices[i], arc_index))
-            if verbose:
+            if self.verbose:
                 arc_length = angle_between(self.vertices[i], self.vertices[j])
             arc_index = arc_index + 1
 
         # Twist all the Arcs and build a list of resulting Equators.
-        if angle != 0.0:
+        if self.twistAngle != 0.0:
             for arc in arcs:
-                arc.twist(angle)
+                arc.twist(self.twistAngle)
 
-        # For each Face trim and intersect each Arc against its neighbors
+        # For each Polyhedron Face trim and intersect each Arc against its neighbors
         for face in self.faces:
             edges = face.getEdges()
             # Find the indices of the Face edges
@@ -79,7 +87,7 @@ class Geodesic(Polyhedron):
             k = edge_indices[0]
             arcs[j].trimAndIntersect(arcs[k])
 
-        if verbose:
+        if self.verbose:
             print("\nTwisted arcs:")
             for i in range(len(arcs)):
                 arc = arcs[i]
@@ -89,8 +97,39 @@ class Geodesic(Polyhedron):
                 relative_intersections = (arc.intersectionA / arc_length, arc.intersectionB / arc_length)
                 print(f" {i:2} l={arc_length} d={trims} i={intersections} ri={relative_intersections}")
 
-        return arcs
+        self.arcs = arcs
 
+    def _computeGeoVertices(self):
+        self.geoVertices = []
+        self.faceSegments = []
+        for arc in self.arcs:
+            [pointA, pointB] = arc.getEndPoints()
+            self.geoVertices.append(pointA)
+            self.geoVertices.append(pointB)
+        return 0
+
+    def _computeArcSegments(self):
+        self.faceSegments = []
+        #for arc in self.arcs:
+        #    [pointA, pointB] = arc.getEndPoints()
+        #    [pointC, pointD] = arc.getIntersectionPoints()
+        #    # BOOKMARK: compute indices of points by searching for the points in self.geoVertices
+        #    #self.faceSegments.append(
+
+    def _computeGeodesicFaces(self):
+        # compute the line segments
+        #for arc in self.arcs[]:
+        # BOOKMARK
+
+        # for each planar face on the base Polyhedron there will be a curved Geodesic face
+        self.faceGeoFaces = []
+
+
+        # for each vertex on the base Polyhedron there will be a curved Geodesic face
+        self.vertexGeoFaces = []
+        if self.twistAngle != 0.0:
+            # TODO: compute the vertex-faces
+            self.vertexGeoFaces = []
 
     def computeIntersectionAngle(self, arcs):
         """
@@ -111,7 +150,6 @@ class Geodesic(Polyhedron):
             arcB = arcs[edge_indices[1]]
             angle = arcA.getIntersectionAngle(arcB)
         return angle
-
 
 # Example usage
 if __name__ == "__main__":
@@ -139,14 +177,10 @@ if __name__ == "__main__":
         shape_name = shapes[i]
 
         # Create a geodesic dome
-        dome = Geodesic(shape_name)
-        dome.orientAndAlign(verbose)
-        dome.computeEdges(verbose)
-        dome.computeFaces(verbose)
+        dome = Geodesic(shape_name, verbose)
 
         # Twist the arcs
-        twist_angle = angles[i]
-        arcs = dome.computeTwistedArcs(twist_angle, verbose=True)
+        dome.setTwistAngle(angles[i])
         intersection_angle = dome.computeIntersectionAngle(arcs)
 
         print(f"\nintersection_angle={intersection_angle:.4} ({intersection_angle * RAD_TO_DEG:.4} degrees)")
