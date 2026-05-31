@@ -8,7 +8,7 @@
 #
 
 import math
-import glm
+from pyglm import glm
 from .face import Face
 
 
@@ -74,84 +74,120 @@ class Graph:
                 print(f" {i:2} {neighbors}")
         self.neighbors = adjacency
 
-        # Find all faces
-        loop_set = set()
-        for b in range(len(self.vertices)):
-            # Get all vertices connected to vertex i
-            neighborsB = list(self.neighbors[b])
+        # Trace faces with the half-edge "next" rule. Each undirected edge is two
+        # directed half-edges; every half-edge belongs to exactly one face. Walking
+        # from a half-edge (u -> v), the next half-edge leaves v along the neighbor
+        # that is the sharpest clockwise turn from the reverse direction (v -> u),
+        # measured in v's tangent plane with v itself as the outward normal. On the
+        # unit sphere this "most-clockwise-when-viewed-from-outside" rule traces the
+        # minimal loop bounding each face in right-handed (counter-clockwise) order.
+        face_loops = set()
+        visited_half_edges = set()
+        for u, v in self._directed_half_edges():
+            if (u, v) in visited_half_edges:
+                continue
 
-            for a in neighborsB:
-                AB = self.vertices[b] - self.vertices[a]
+            loop = [u]
+            a, b = u, v
+            while True:
+                visited_half_edges.add((a, b))
+                if b == u:
+                    break
+                loop.append(b)
+                a, b = b, self._next_in_face(a, b)
+                if (a, b) in visited_half_edges:
+                    # Closed back on the starting half-edge (b == u handled above)
+                    # or, defensively, hit an already-traced edge; stop here.
+                    break
 
-                num_faces_found = 0
-                for c in neighborsB:
-                    if c == a:
-                        continue
-                    BC = self.vertices[c] - self.vertices[b]
+            # Orient the loop right-handed as seen from outside the sphere (its
+            # polygon normal should point away from the origin), then rotate so
+            # the lowest index leads. Fixing winding here makes the result
+            # independent of which turn direction the trace happened to follow.
+            loop = self._orient_outward(loop)
+            face_loops.add(tuple(sort_indices(loop)))
 
-                    # ABC starts Face iff all other neighborsB are on one side of the ABC plane
-                    axisABC = glm.normalize(glm.cross(AB, BC))
-                    num_positive = 0
-                    num_negative = 0
-                    c_starts_face = True
-                    for d in neighborsB:
-                        if d == a or d == c:
-                            continue
-                        BD = self.vertices[d] - self.vertices[b]
-                        if glm.dot(axisABC, BD) < 0:
-                            num_negative += 1
-                            if num_positive > 0:
-                                c_starts_face = False
-                                break
-                        else:
-                            num_positive += 1
-                            if num_negative > 0:
-                                c_starts_face = False
-                                break
-
-                    if c_starts_face:
-                        loop_indices = [a, b, c]
-                        d = b
-                        e = c
-                        DE = self.vertices[e] - self.vertices[d]
-                        while e != a:
-                            neighborsE = list(self.neighbors[e])
-                            for f in neighborsE:
-                                if f == a:
-                                    e = f
-                                    break
-                                if f in loop_indices:
-                                    continue
-                                EF = self.vertices[f] - self.vertices[e]
-                                axisDEF = glm.normalize(glm.cross(DE, EF))
-                                dot_error = math.fabs(1.0 - math.fabs(glm.dot(axisABC, axisDEF)))
-                                if math.fabs(1.0 - math.fabs(glm.dot(axisABC, axisDEF))) < 0.001:
-                                    # f is on the Face plane
-                                    loop_indices.append(f)
-                                    e = f
-                                    break
-
-                        # rotate indices to make lowest index first
-                        loop_indices = sort_indices(loop_indices)
-
-                        # make sure loop is right-handed
-                        JK = self.vertices[loop_indices[1]] - self.vertices[loop_indices[0]]
-                        KL = self.vertices[loop_indices[2]] - self.vertices[loop_indices[1]]
-                        axisJKL = glm.normalize(glm.cross(JK, KL))
-                        if glm.dot(self.vertices[loop_indices[0]], axisJKL) < 0.0:
-                            # this is a left-handed loop and we need to make it right-handed
-                            # keep the first loop element where it is but reverse the order of the rest
-                            loop_indices = [loop_indices[0]] + loop_indices[1:][::-1]
-
-                        loop_set.add(tuple(loop_indices))
-                        num_faces_found += 1
-                        if num_faces_found == 2:
-                            break;
-
-        # Convert set to list of Face objects
-        self.faces = [Face(loop) for loop in sorted(loop_set)]
+        # Now that we have all of the face_loops convert to list of Face objects
+        self.faces = [Face(loop) for loop in sorted(face_loops)]
 
         if self.verbose:
             print("\nFaces:")
             for i, face in enumerate(self.faces):
                 print(f" {i:2} {face}")
+
+    def _orient_outward(self, loop):
+        """Return `loop` ordered so its winding is right-handed when viewed from
+        outside the unit sphere, i.e. the polygon's area-normal points away from
+        the origin. Reverses the loop in place-of-copy if it is currently inward."""
+        # Newell's method gives a normal robust to non-planar / many-vertex loops.
+        normal = glm.vec3(0.0, 0.0, 0.0)
+        n = len(loop)
+        for i in range(n):
+            current = self.vertices[loop[i]]
+            nxt = self.vertices[loop[(i + 1) % n]]
+            normal.x += (current.y - nxt.y) * (current.z + nxt.z)
+            normal.y += (current.z - nxt.z) * (current.x + nxt.x)
+            normal.z += (current.x - nxt.x) * (current.y + nxt.y)
+
+        # Centroid direction approximates the outward radial direction for a face
+        # of a sphere-centered mesh.
+        centroid = glm.vec3(0.0, 0.0, 0.0)
+        for idx in loop:
+            centroid += self.vertices[idx]
+        if glm.dot(normal, centroid) < 0.0:
+            return list(reversed(loop))
+        return list(loop)
+
+    def _directed_half_edges(self):
+        """Yield each undirected edge as both of its directed half-edges."""
+        for vertex, neighbors in enumerate(self.neighbors):
+            for neighbor in neighbors:
+                yield (vertex, neighbor)
+
+    def _next_in_face(self, a, b):
+        """
+        Given the directed half-edge a -> b, return the next vertex c so that
+        b -> c continues the face that lies to the right of a -> b.
+
+        At b we look back toward a and choose, among b's other neighbors, the one
+        reached by the smallest clockwise turn when viewed from outside the sphere
+        (b is the outward normal). Picking the most-clockwise candidate keeps the
+        traversal hugging a single face, producing a right-handed loop.
+        """
+        normal = glm.normalize(self.vertices[b])
+        incoming = self._tangent_direction(b, a, normal)
+
+        best = None
+        best_angle = None
+        for c in self.neighbors[b]:
+            if c == a and len(self.neighbors[b]) > 1:
+                # Don't immediately backtrack unless b is a dead end.
+                continue
+            outgoing = self._tangent_direction(b, c, normal)
+            angle = self._clockwise_angle(incoming, outgoing, normal)
+            if best_angle is None or angle < best_angle:
+                best_angle = angle
+                best = c
+        return best
+
+    def _tangent_direction(self, origin_index, target_index, normal):
+        """Unit direction from origin toward target, projected into origin's
+        tangent plane (the plane through origin with `normal` as its normal)."""
+        delta = self.vertices[target_index] - self.vertices[origin_index]
+        tangent = delta - glm.dot(delta, normal) * normal
+        return glm.normalize(tangent)
+
+    @staticmethod
+    def _clockwise_angle(reference, direction, normal):
+        """Angle in [0, 2pi) swept clockwise from `reference` to `direction`,
+        looking down the outward `normal` (i.e. from outside the sphere).
+
+        Clockwise-as-seen-from-outside is the negative (left-handed) sense about
+        the outward normal, so we negate the cross-product term."""
+        cos_a = glm.dot(reference, direction)
+        # Component of `direction` along the clockwise perpendicular of `reference`.
+        sin_a = glm.dot(glm.cross(reference, direction), normal)
+        angle = math.atan2(-sin_a, cos_a)
+        if angle < 0.0:
+            angle += 2.0 * math.pi
+        return angle

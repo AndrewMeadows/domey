@@ -8,7 +8,7 @@
 #
 
 import math
-import glm
+from pyglm import glm
 from meshics.graph import Graph
 
 

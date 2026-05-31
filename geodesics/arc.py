@@ -3,7 +3,7 @@
 #
 
 import math
-import glm
+from pyglm import glm
 
 
 # helper
