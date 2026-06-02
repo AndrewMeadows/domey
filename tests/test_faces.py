@@ -79,22 +79,27 @@ def test_zero_twist_matches_base_polyhedron(shape, count, sides):
     _assert_faces(geodesic.geo_graph, count, sides)
 
 
-def test_tetrahedron_geodesic_faces():
+# A negative twist opens the base vertices the opposite way, but by symmetry the
+# face topology is identical to the matching positive twist, so both signs are
+# exercised with the same expectations.
+@pytest.mark.parametrize("twist", [0.1, -0.1])
+def test_tetrahedron_geodesic_faces(twist):
     """A tetrahedron twisted by a small angle yields eight triangular faces.
 
     The four original faces survive and four new "truncated" faces open at the
     base vertices. After mid-arc vertices are trimmed every face is a triangle.
     """
     geodesic = Geodesic("tetrahedron")
-    geodesic.setTwistAngle(0.1)
+    geodesic.setTwistAngle(twist)
     _assert_faces(geodesic.geo_graph, 8, 3)
 
 
-def test_icosahedron_geodesic_faces():
+@pytest.mark.parametrize("twist", [0.6534, -0.6534])
+def test_icosahedron_geodesic_faces(twist):
     """A twisted icosahedron yields 32 faces: the 20 original triangular faces
     plus 12 new pentagonal "truncated" faces opening at the base vertices.
     """
     geodesic = Geodesic("icosahedron")
-    geodesic.setTwistAngle(0.6534)
+    geodesic.setTwistAngle(twist)
     _assert_faces(geodesic.geo_graph, 32, {3: 20, 5: 12})
 

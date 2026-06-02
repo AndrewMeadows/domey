@@ -40,10 +40,8 @@ class GeodesicViewer(mglw.WindowConfig):
 
         self.renderer.draw(
             mvp_bytes=bytes(mvp.to_bytes()),
-            show_edges=self.state.display.show_base_polyhedron,
-            show_arcs=self.state.display.show_arcs,
-            show_intersections=self.state.display.show_intersections,
-            show_faces=self.state.display.show_faces,
+            geodesic=self.state.display.geodesic,
+            polyhedron=self.state.display.polyhedron,
         )
 
         imgui.new_frame()

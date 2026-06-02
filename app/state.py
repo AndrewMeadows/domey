@@ -12,16 +12,24 @@ SHAPES = (
 @dataclass(frozen=True)
 class GeometryInputs:
     shape_name: str = "icosahedron"
-    twist_angle: float = 0.6534
+    twist_angle: float = 0.0
+
+
+@dataclass
+class ObjectDisplay:
+    """Per-object visibility: the object itself plus each element type."""
+    enabled: bool = True
+    show_vertices: bool = True
+    show_edges: bool = True
+    show_faces: bool = True
 
 
 @dataclass
 class DisplayFlags:
-    show_base_polyhedron: bool = True
-    show_arcs: bool = True
-    show_intersections: bool = True
-    show_faces: bool = False
-    wireframe: bool = True
+    polyhedron: ObjectDisplay = field(
+        default_factory=lambda: ObjectDisplay(enabled=False)
+    )
+    geodesic: ObjectDisplay = field(default_factory=ObjectDisplay)
 
 
 @dataclass

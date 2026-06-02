@@ -46,6 +46,13 @@ class Renderer:
         self._line_mvp = self.line_prog["u_mvp"]
         self._line_color = self.line_prog["u_color"]
 
+        self.tri_prog = ctx.program(
+            vertex_shader=_read("tri.vert"),
+            fragment_shader=_read("tri.frag"),
+        )
+        self._tri_mvp = self.tri_prog["u_mvp"]
+        self._tri_color = self.tri_prog["u_color"]
+
         self.point_prog = ctx.program(
             vertex_shader=_read("point.vert"),
             fragment_shader=_read("point.frag"),
@@ -54,17 +61,14 @@ class Renderer:
         self._point_color = self.point_prog["u_color"]
         self._point_size = self.point_prog["u_point_size"]
 
-        self.tri_prog = ctx.program(
-            vertex_shader=_read("tri.vert"),
-            fragment_shader=_read("tri.frag"),
-        )
-        self._tri_mvp = self.tri_prog["u_mvp"]
-        self._tri_color = self.tri_prog["u_color"]
-
-        self._edges = _GLBuffer(ctx, self.line_prog)
-        self._arcs = _GLBuffer(ctx, self.line_prog)
-        self._points = _GLBuffer(ctx, self.point_prog)
-        self._faces = _GLBuffer(ctx, self.tri_prog)
+        # One buffer set per object (geodesic, polyhedron); each has edges,
+        # faces and vertices.
+        self._geo_edges = _GLBuffer(ctx, self.line_prog)
+        self._geo_faces = _GLBuffer(ctx, self.tri_prog)
+        self._geo_points = _GLBuffer(ctx, self.point_prog)
+        self._poly_edges = _GLBuffer(ctx, self.line_prog)
+        self._poly_faces = _GLBuffer(ctx, self.tri_prog)
+        self._poly_points = _GLBuffer(ctx, self.point_prog)
 
         self._cached_inputs: GeometryInputs | None = None
 
@@ -72,48 +76,56 @@ class Renderer:
         if inputs == self._cached_inputs:
             return
         buffers = build_geometry(inputs)
-        self._edges.upload(buffers.edge_vertices)
-        self._arcs.upload(buffers.arc_vertices)
-        self._points.upload(buffers.intersection_points)
-        self._faces.upload(buffers.face_triangles)
+        self._geo_edges.upload(buffers.geodesic.edges)
+        self._geo_faces.upload(buffers.geodesic.faces)
+        self._geo_points.upload(buffers.geodesic.vertices)
+        self._poly_edges.upload(buffers.polyhedron.edges)
+        self._poly_faces.upload(buffers.polyhedron.faces)
+        self._poly_points.upload(buffers.polyhedron.vertices)
         self._cached_inputs = inputs
 
-    def draw(
-        self,
-        mvp_bytes: bytes,
-        show_edges: bool,
-        show_arcs: bool,
-        show_intersections: bool,
-        show_faces: bool,
-    ) -> None:
+    # Per-object colors so the two objects stay distinguishable when both show.
+    _GEO_FACE = (0.30, 0.55, 0.90, 1.0)
+    _GEO_EDGE = (0.95, 0.78, 0.30)
+    _GEO_POINT = (0.30, 0.85, 0.95)
+    _POLY_FACE = (0.55, 0.50, 0.40, 1.0)
+    _POLY_EDGE = (0.55, 0.57, 0.62)
+    _POLY_POINT = (0.95, 0.55, 0.45)
+
+    def draw(self, mvp_bytes: bytes, geodesic, polyhedron) -> None:
+        """Render the enabled objects. `geodesic` and `polyhedron` are
+        ObjectDisplay-like flags (enabled / show_vertices / show_edges / show_faces)."""
         ctx = self.ctx
         ctx.enable(moderngl.DEPTH_TEST)
         ctx.enable(moderngl.PROGRAM_POINT_SIZE)
         ctx.clear(0.08, 0.09, 0.11, 1.0)
 
-        if show_faces:
-            # Translucent fills: blend with depth-test on but writes off so
-            # face fragments don't occlude lines/points drawn later.
-            ctx.enable(moderngl.BLEND)
-            ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
-            ctx.depth_mask = False
-            self._tri_mvp.write(mvp_bytes)
-            self._tri_color.value = (0.30, 0.55, 0.90, 0.35)
-            self._faces.render(moderngl.TRIANGLES)
-            ctx.depth_mask = True
-            ctx.disable(moderngl.BLEND)
+        # (flags, faces, edges, points, face_color, edge_color, point_color)
+        objects = []
+        if geodesic.enabled:
+            objects.append((geodesic, self._geo_faces, self._geo_edges, self._geo_points,
+                            self._GEO_FACE, self._GEO_EDGE, self._GEO_POINT))
+        if polyhedron.enabled:
+            objects.append((polyhedron, self._poly_faces, self._poly_edges, self._poly_points,
+                            self._POLY_FACE, self._POLY_EDGE, self._POLY_POINT))
 
-        if show_edges or show_arcs:
-            self._line_mvp.write(mvp_bytes)
-            if show_edges:
-                self._line_color.value = (0.40, 0.42, 0.48)
-                self._edges.render(moderngl.LINES)
-            if show_arcs:
-                self._line_color.value = (0.95, 0.78, 0.30)
-                self._arcs.render(moderngl.LINES)
+        # Opaque faces first (depth writes on) so edges and vertices drawn after
+        # are depth-tested against the surfaces and hidden on the far side.
+        self._tri_mvp.write(mvp_bytes)
+        for flags, faces, _e, _p, face_color, _ec, _pc in objects:
+            if flags.show_faces:
+                self._tri_color.value = face_color
+                faces.render(moderngl.TRIANGLES)
 
-        if show_intersections:
-            self._point_mvp.write(mvp_bytes)
-            self._point_color.value = (0.30, 0.85, 0.95)
-            self._point_size.value = 9.0
-            self._points.render(moderngl.POINTS)
+        self._line_mvp.write(mvp_bytes)
+        for flags, _f, edges, _p, _fc, edge_color, _pc in objects:
+            if flags.show_edges:
+                self._line_color.value = edge_color
+                edges.render(moderngl.LINES)
+
+        self._point_mvp.write(mvp_bytes)
+        self._point_size.value = 9.0
+        for flags, _f, _e, points, _fc, _ec, point_color in objects:
+            if flags.show_vertices:
+                self._point_color.value = point_color
+                points.render(moderngl.POINTS)

@@ -1,11 +1,46 @@
 from imgui_bundle import imgui
 
-from .state import AppState, SHAPES
+from .state import AppState, ObjectDisplay, SHAPES
+
+_TWIST_MIN, _TWIST_MAX = -1.5708, 1.5708
+_BOX_WIDTH = 150
+_BOX_HEIGHT = 130
+
+
+def _object_box(label: str, obj: ObjectDisplay, width: float, height: float) -> None:
+    """A bordered box with the object's enable checkbox and element toggles."""
+    imgui.begin_child(label, imgui.ImVec2(width, height), True)
+    imgui.push_id(label)
+
+    _, obj.enabled = imgui.checkbox(label, obj.enabled)
+    imgui.separator()
+    _, obj.show_vertices = imgui.checkbox("vertices", obj.show_vertices)
+    _, obj.show_edges = imgui.checkbox("edges", obj.show_edges)
+    _, obj.show_faces = imgui.checkbox("faces", obj.show_faces)
+
+    imgui.pop_id()
+    imgui.end_child()
+
+
+def _twist_slider(state: AppState) -> None:
+    """Twist slider; scrolling the mouse wheel while hovering nudges it."""
+    imgui.set_next_item_width(-1)
+    changed, new_twist = imgui.slider_float(
+        "##twist", state.geometry.twist_angle, _TWIST_MIN, _TWIST_MAX
+    )
+    wheel = imgui.get_io().mouse_wheel
+    if imgui.is_item_hovered() and wheel != 0.0:
+        step = (_TWIST_MAX - _TWIST_MIN) / 100.0
+        new_twist = min(_TWIST_MAX, max(_TWIST_MIN,
+                        state.geometry.twist_angle + wheel * step))
+        changed = True
+    if changed:
+        state.set_geometry(twist_angle=new_twist)
 
 
 def draw_ui(state: AppState) -> None:
     imgui.set_next_window_pos(imgui.ImVec2(10, 10), imgui.Cond_.first_use_ever.value)
-    imgui.set_next_window_size(imgui.ImVec2(280, 220), imgui.Cond_.first_use_ever.value)
+    imgui.set_next_window_size(imgui.ImVec2(340, 260), imgui.Cond_.first_use_ever.value)
     imgui.begin("Geodesic")
 
     current = state.geometry.shape_name
@@ -18,24 +53,31 @@ def draw_ui(state: AppState) -> None:
                 imgui.set_item_default_focus()
         imgui.end_combo()
 
-    changed, new_twist = imgui.slider_float(
-        "twist", state.geometry.twist_angle, -1.5708, 1.5708
-    )
-    if changed:
-        state.set_geometry(twist_angle=new_twist)
-
     imgui.separator()
-    _, state.display.show_base_polyhedron = imgui.checkbox(
-        "base edges", state.display.show_base_polyhedron
+
+    # Two side-by-side boxes: polyhedron on the left, geodesic on the right. The
+    # geodesic box is taller to hold the twist slider.
+    _object_box("polyhedron", state.display.polyhedron, _BOX_WIDTH, _BOX_HEIGHT + 28)
+    imgui.same_line()
+
+    imgui.begin_child("geodesic_box", imgui.ImVec2(_BOX_WIDTH, _BOX_HEIGHT + 28), True)
+    imgui.push_id("geodesic_box")
+    _, state.display.geodesic.enabled = imgui.checkbox(
+        "geodesic", state.display.geodesic.enabled
     )
-    _, state.display.show_arcs = imgui.checkbox(
-        "twisted arcs", state.display.show_arcs
+    imgui.text("twist")
+    _twist_slider(state)
+    imgui.separator()
+    _, state.display.geodesic.show_vertices = imgui.checkbox(
+        "vertices", state.display.geodesic.show_vertices
     )
-    _, state.display.show_intersections = imgui.checkbox(
-        "intersections", state.display.show_intersections
+    _, state.display.geodesic.show_edges = imgui.checkbox(
+        "edges", state.display.geodesic.show_edges
     )
-    _, state.display.show_faces = imgui.checkbox(
-        "face fills", state.display.show_faces
+    _, state.display.geodesic.show_faces = imgui.checkbox(
+        "faces", state.display.geodesic.show_faces
     )
+    imgui.pop_id()
+    imgui.end_child()
 
     imgui.end()

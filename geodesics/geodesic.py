@@ -123,7 +123,15 @@ class Geodesic:
                     if edge == polyhedron.edges[i]:
                         edge_indices.append(i)
 
-            # Trim and intersect each Arc against its face-neighbor in right-hand direction
+            # A twisted Arc swings toward the face-neighbor on the side it twists
+            # into: its right-hand (successor) neighbor for a positive twist, its
+            # left-hand (predecessor) neighbor for a negative twist. Walking the
+            # face's edge ring in reverse for a negative twist pairs each Arc with
+            # the neighbor it actually intersects, so it gets trimmed correctly.
+            if self.twist_angle < 0.0:
+                edge_indices.reverse()
+
+            # Trim and intersect each Arc against the next neighbor around the ring.
             for i in range(1, len(edge_indices)):
                 j = edge_indices[i - 1]
                 k = edge_indices[i]
