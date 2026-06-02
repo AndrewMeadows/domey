@@ -70,6 +70,15 @@ def test_platonic_solid_faces(shape, count, sides):
     _assert_faces(Polyhedron(shape), count, sides)
 
 
+@pytest.mark.parametrize("shape, count, sides", PLATONIC_SOLIDS)
+def test_zero_twist_matches_base_polyhedron(shape, count, sides):
+    """With no twist the base vertices are not opened, so the geodesic's faces
+    match its base polyhedron exactly (same count and same shape)."""
+    geodesic = Geodesic(shape)
+    geodesic.setTwistAngle(0.0)
+    _assert_faces(geodesic.geo_graph, count, sides)
+
+
 def test_tetrahedron_geodesic_faces():
     """A tetrahedron twisted by a small angle yields eight triangular faces.
 

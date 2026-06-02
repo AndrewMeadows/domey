@@ -1,5 +1,5 @@
 import math
-import glm
+from pyglm import glm
 
 from .state import CameraState
 

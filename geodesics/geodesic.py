@@ -60,16 +60,33 @@ class Geodesic:
 
     def setTwistAngle(self, angle):
         self.twist_angle = angle
+        self._computeTwistedArcs()
         if self.twist_angle == 0.0:
-            self.arcs = []
-            self.geo_graph = Graph(self.verbose)
-            self.geo_vertices = []
-            self.arc_segments = []
+            # No twist: the base vertices are never opened, so the geodesic graph
+            # is exactly the base polyhedron. Copy its topology directly instead
+            # of rediscovering it through the arc-intersection pipeline (which at
+            # zero twist degenerates into O(n^2) merges of coincident points).
+            self._computeBaseGeoGraph()
         else:
-            self._computeTwistedArcs()
             self._computeGeoVertices()
             self._computeArcSegments()
             self._computeGeoGraph()
+
+    def _computeBaseGeoGraph(self):
+        """
+        Populate the geodesic graph directly from the base polyhedron.
+
+        At zero twist the geodesic is identical to its base polyhedron, so its
+        vertices, edges and faces are the polyhedron's, copied as-is. This skips
+        the arc-intersection, vertex-merge and face-tracing pipeline.
+        """
+        polyhedron = self.polyhedron
+        self.geo_vertices = list(polyhedron.vertices)
+        self.arc_segments = [list(edge) for edge in polyhedron.edges]
+
+        self.geo_graph.vertices = self.geo_vertices
+        self.geo_graph.edges = self.arc_segments
+        self.geo_graph.faces = [Face(face.vertex_indices) for face in polyhedron.faces]
 
     def _computeTwistedArcs(self):
         """
@@ -128,12 +145,27 @@ class Geodesic:
         self.arcs = arcs
 
 
+    # Two geo-vertices closer than this are treated as the same point. At a
+    # nonzero twist every arc endpoint is distinct; at zero twist adjacent arcs
+    # share base-polyhedron vertices, producing exact duplicates to merge.
+    VERTEX_MERGE_TOLERANCE = 1e-4
+
     def _computeGeoVertices(self):
+        # Collect each arc's two endpoints, merging coincident points so a shared
+        # vertex is stored once. This keeps the zero-twist case (where many
+        # endpoints coincide on base vertices) from creating duplicate vertices.
         self.geo_vertices = []
         for arc in self.arcs:
-            [point_A, point_B] = arc.getEndPoints()
-            self.geo_vertices.append(point_A)
-            self.geo_vertices.append(point_B)
+            for point in arc.getEndPoints():
+                if not self._hasVertex(point):
+                    self.geo_vertices.append(point)
+
+    def _hasVertex(self, point):
+        """True when a geo-vertex within merge tolerance of point already exists."""
+        for vertex in self.geo_vertices:
+            if glm.distance(vertex, point) < self.VERTEX_MERGE_TOLERANCE:
+                return True
+        return False
 
 
     def _computeArcSegments(self):
@@ -156,12 +188,17 @@ class Geodesic:
             indexC = find_nearest_index(self.geo_vertices, point_C)
             indexD = find_nearest_index(self.geo_vertices, point_D)
 
-            # append the segments
-            self.arc_segments.append(sorted((indexA, indexC)))
-            self.arc_segments.append(sorted((indexC, indexD)))
-            self.arc_segments.append(sorted((indexD, indexB)))
+            # Append the segments, skipping any that are degenerate. At zero twist
+            # the intersection points C and D coincide with the endpoints A and B,
+            # collapsing A-C and D-B to zero length; the arc then contributes only
+            # its single A(=C)-D(=B) edge, exactly a base-polyhedron edge.
+            for segment in ((indexA, indexC), (indexC, indexD), (indexD, indexB)):
+                if segment[0] != segment[1]:
+                    self.arc_segments.append(sorted(segment))
 
-        self.arc_segments.sort()
+        # Drop duplicate edges (sorted so direction doesn't matter), then sort.
+        unique_segments = {tuple(seg) for seg in self.arc_segments}
+        self.arc_segments = sorted(list(seg) for seg in unique_segments)
 
     def _computeGeoGraph(self):
         """
