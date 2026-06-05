@@ -1,25 +1,10 @@
 from imgui_bundle import imgui
 
-from .state import AppState, ObjectDisplay, ORDERS, SHAPES
+from .state import AppState, ORDERS, SHAPES
 
 _TWIST_MIN, _TWIST_MAX = -1.5708, 1.5708
 _BOX_WIDTH = 150
 _BOX_HEIGHT = 130
-
-
-def _object_box(label: str, obj: ObjectDisplay, width: float, height: float) -> None:
-    """A bordered box with the object's enable checkbox and element toggles."""
-    imgui.begin_child(label, imgui.ImVec2(width, height), True)
-    imgui.push_id(label)
-
-    _, obj.enabled = imgui.checkbox(label, obj.enabled)
-    imgui.separator()
-    _, obj.show_vertices = imgui.checkbox("vertices", obj.show_vertices)
-    _, obj.show_edges = imgui.checkbox("edges", obj.show_edges)
-    _, obj.show_faces = imgui.checkbox("faces", obj.show_faces)
-
-    imgui.pop_id()
-    imgui.end_child()
 
 
 def _twist_slider(state: AppState) -> None:
@@ -66,11 +51,29 @@ def draw_ui(state: AppState) -> None:
     imgui.separator()
 
     # Two side-by-side boxes: polyhedron on the left, geodesic on the right. The
-    # geodesic box is taller to hold the twist slider.
-    _object_box("polyhedron", state.display.polyhedron, _BOX_WIDTH, _BOX_HEIGHT + 28)
+    # geodesic box also holds the twist slider.
+    box_size = imgui.ImVec2(_BOX_WIDTH, _BOX_HEIGHT + 28)
+
+    imgui.begin_child("polyhedron_box", box_size, True)
+    imgui.push_id("polyhedron_box")
+    _, state.display.polyhedron.enabled = imgui.checkbox(
+        "polyhedron", state.display.polyhedron.enabled
+    )
+    imgui.separator()
+    _, state.display.polyhedron.show_vertices = imgui.checkbox(
+        "vertices", state.display.polyhedron.show_vertices
+    )
+    _, state.display.polyhedron.show_edges = imgui.checkbox(
+        "edges", state.display.polyhedron.show_edges
+    )
+    _, state.display.polyhedron.show_faces = imgui.checkbox(
+        "faces", state.display.polyhedron.show_faces
+    )
+    imgui.pop_id()
+    imgui.end_child()
     imgui.same_line()
 
-    imgui.begin_child("geodesic_box", imgui.ImVec2(_BOX_WIDTH, _BOX_HEIGHT + 28), True)
+    imgui.begin_child("geodesic_box", box_size, True)
     imgui.push_id("geodesic_box")
     _, state.display.geodesic.enabled = imgui.checkbox(
         "geodesic", state.display.geodesic.enabled

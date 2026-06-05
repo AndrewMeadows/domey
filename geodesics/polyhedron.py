@@ -250,6 +250,31 @@ class Polyhedron(Graph):
                 # now all faces are triangles
                 self._computeTopology()
                 i -= 1
+            elif self.shape == "tetrahedron":
+                # add a vertex in the center of each edge, and one at the center
+                #    o---------------o       o-------o-------o
+                #     \             /         \             /
+                #      \           /           \     o     /
+                #       \         /             \         /
+                #        \       /     ---->     o       o
+                #         \     /                 \     /
+                #          \   /                   \   /
+                #           \ /                     \ /
+                #            o                       o
+                #
+                # adjacent faces share edges; track processed edges so each shared
+                # edge contributes only one midpoint vertex
+                for edge in self.edges:
+                    self.vertices.append(glm.normalize(self.vertices[edge[0]] + self.vertices[edge[1]]))
+                for face in self.faces:
+                    face_center = glm.vec3(0, 0, 0)
+                    for index in face.vertex_indices:
+                        face_center += self.vertices[index]
+                    self.vertices.append(glm.normalize(face_center))
+
+                self._computeTopology()
+                i -= 1
+
             if i == 2:
                 # add a vertex in the center of each edge
                 #    o---------------o       o-------o-------o
@@ -284,11 +309,11 @@ class Polyhedron(Graph):
                 # util function for dividing edge into thirds
                 # along the arc from A to B rather than
                 # along the straight line from A to B
-                def add_two_points(new_vertices, point_A, point_B):
+                def compute_two_points(point_A, point_B):
                     axis = glm.cross(point_A, point_B)
                     axis_length = glm.length(axis)
                     # angle is the sweep to move point_A to point_B
-                    angle = math.acos(axis_length)
+                    angle = math.asin(axis_length)
                     # we want new points that are one-third of angle
                     delta_angle = angle/3.0
                     # the coefficients of the quaternion use sines of half of delta_angle
@@ -296,24 +321,18 @@ class Polyhedron(Graph):
                     s = math.sin(delta_angle/2.0)   # the w-component scales with c
                     axis *= s / axis_length         # the xyz components scale with s*normalized_axis
                     dQ = glm.quat(c, axis.x, axis.y, axis.z)
-                    new_vertices.append(dQ * point_A) # rotate point_A from the left toward B
-                    new_vertices.append(point_B * dQ) # rotate point_B from the right toward A
+                    # rotate point_A from the left toward B, point_B from the right toward A
+                    return (dQ * point_A, point_B * dQ)
 
+                for edge in self.edges:
+                    points = compute_two_points(self.vertices[edge[0]], self.vertices[edge[1]])
+                    for point in points:
+                        self.vertices.append(point)
                 for face in self.faces:
-                    new_vertices = []
-                    indices = face.vertex_indices
-                    num_indices = len(indices)
-                    # add two vertices for each face edge
-                    for j in range(num_indices - 1):
-                        add_two_points(new_vertices, self.vertices[indices[j]], self.vertices[indices[j+1]])
-                    # don't forget the edge between first and last vertices
-                    add_two_points(new_vertices, self.vertices[indices[0]], self.vertices[indices[num_indices-1]])
-                    # add a final point that is the average of new_vertices
-                    new_vertex = glm.vec3(0, 0, 0)
-                    for vertex in new_vertices:
-                        new_vertex += vertex
-                        self.vertices.append(vertex)
-                    self.vertices.append(new_vertex / len(new_vertices))
+                    face_center = glm.vec3(0, 0, 0)
+                    for index in face.vertex_indices:
+                        face_center += self.vertices[index]
+                    self.vertices.append(glm.normalize(face_center))
                 self._computeTopology()
         else:
             order = MIN_ORDER
@@ -463,8 +482,7 @@ class Polyhedron(Graph):
             if dist < min_dist:
                 min_dist = dist
 
-        # TODO: tune the NEIGHBOR_PROXIMITY_FACTOR used for determining neighbors
-        NEIGHBOR_PROXIMITY_FACTOR = 1.3
+        NEIGHBOR_PROXIMITY_FACTOR = 1.395
         neighbor_threshold = NEIGHBOR_PROXIMITY_FACTOR * min_dist
 
         # For each Vertex, check all Vertices with higher indices
