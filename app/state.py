@@ -8,11 +8,14 @@ SHAPES = (
     "icosahedron",
 )
 
+ORDERS = (1, 2, 3)
+
 
 @dataclass(frozen=True)
 class GeometryInputs:
     shape_name: str = "icosahedron"
     twist_angle: float = 0.0
+    order: int = 1
 
 
 @dataclass

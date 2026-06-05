@@ -33,14 +33,17 @@ class GeometryBuffers:
     polyhedron: ObjectBuffers
 
 
-_geodesic_cache: dict[str, Geodesic] = {}
+_geodesic_cache: dict[tuple[str, int], Geodesic] = {}
 
 
-def _get_geodesic(shape_name: str, twist: float) -> Geodesic:
-    g = _geodesic_cache.get(shape_name)
+def _get_geodesic(shape_name: str, twist: float, order: int) -> Geodesic:
+    # Order changes the base polyhedron, which is built in Geodesic.__init__, so
+    # cache per (shape, order) rather than rebuilding the same one each frame.
+    key = (shape_name, order)
+    g = _geodesic_cache.get(key)
     if g is None:
-        g = Geodesic(shape_name)
-        _geodesic_cache[shape_name] = g
+        g = Geodesic(shape_name, order)
+        _geodesic_cache[key] = g
     g.setTwistAngle(twist)
     return g
 
@@ -180,7 +183,7 @@ def _points_to_array(points, radius) -> np.ndarray:
 
 
 def build_geometry(inputs: GeometryInputs) -> GeometryBuffers:
-    g = _get_geodesic(inputs.shape_name, inputs.twist_angle)
+    g = _get_geodesic(inputs.shape_name, inputs.twist_angle, inputs.order)
     graph = g.geo_graph
     polyhedron = g.getPolyhedron()
 

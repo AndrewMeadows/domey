@@ -17,8 +17,7 @@ class Polyhedron(Graph):
     A regular polyhedron: a Graph whose vertices come from a Platonic solid.
 
     Provides methods to initialize the vertices of each of the five regular
-    polyhedra. Once the vertices are chosen, computeTopology() orients/aligns
-    them and derives the edges and faces.
+    polyhedra.
     """
 
     VALID_SHAPES = {
@@ -30,54 +29,42 @@ class Polyhedron(Graph):
         'icosahedron'
     }
 
-    def __init__(self, shape_type=None, verbose=False):
+    def __init__(self, shape=None, order=1, verbose=False):
         """
         Initialize a polyhedron with an optional shape type.
 
         Args:
-            shape_type: Optional string specifying the shape ('tetrahedron', 'hexahedron',
-                       'hexahedron', 'octahedron', 'dodecahedron', 'icosahedron').
-                       If None, creates an empty polyhedron that must be initialized
-                       manually using one of the init methods.
+            shape: Optional string specifying the shape ('tetrahedron', 'hexahedron',
+                   'hexahedron', 'octahedron', 'dodecahedron', 'icosahedron').
+                   If None, creates an empty polyhedron that must be initialized
+                   manually using one of the init methods.
 
         Raises:
-            ValueError: If shape_type is not a valid shape name.
+            ValueError: If shape is invalid.
         """
         # Start with an empty Graph; this polyhedron supplies its own vertices.
         super().__init__(verbose=verbose)
-        self.shape_name = ""
+        self.shape = ""
 
-        if shape_type is not None:
-            shape_type_lower = shape_type.lower()
-            if shape_type_lower not in self.VALID_SHAPES:
+        if shape is not None:
+            shape_name_lower = shape.lower()
+            if shape_name_lower not in self.VALID_SHAPES:
                 raise ValueError(
-                    f"Invalid shape_type '{shape_type}'. "
+                    f"Invalid shape '{shape}'. "
                     f"Valid options are: {', '.join(sorted(self.VALID_SHAPES))}"
                 )
+            self.shape =  shape_name_lower
+            self._rebuildGraph(order)
 
-            # Map shape types to their initialization methods
-            shape_map = {
-                'tetrahedron': self.initTetrahedron,
-                'cube': self.initHexahedron,
-                'hexahedron': self.initHexahedron,
-                'octahedron': self.initOctahedron,
-                'dodecahedron': self.initDodecahedron,
-                'icosahedron': self.initIcosahedron
-            }
 
-            shape_map[shape_type_lower]()
-
-        # Derive edges, neighbors, and faces from the chosen vertices.
-        self.computeTopology()
-
-    def initTetrahedron(self):
+    def _initTetrahedron(self):
         """
         Initialize vertices for a regular tetrahedron.
 
         The four vertices of a regular tetrahedron centered at the origin are:
         (1, 1, 1), (1, -1, -1), (-1, 1, -1), (-1, -1, 1)
         """
-        self.shape_name = "tetrahedron"
+        self.shape = "tetrahedron"
         self.vertices = [
             glm.vec3(1, 1, 1),
             glm.vec3(1, -1, -1),
@@ -85,14 +72,14 @@ class Polyhedron(Graph):
             glm.vec3(-1, -1, 1)
         ]
 
-    def initHexahedron(self):
+    def _initHexahedron(self):
         """
         Initialize vertices for a hexahedron (aka cube).
 
         The eight vertices of a hexahedron centered at the origin are:
         (+/-1, +/-1, +/-1) for all combinations of signs
         """
-        self.shape_name = "hexahedron"
+        self.shape = "hexahedron"
         self.vertices = [
             glm.vec3(1, 1, 1),
             glm.vec3(1, 1, -1),
@@ -104,14 +91,14 @@ class Polyhedron(Graph):
             glm.vec3(-1, -1, -1)
         ]
 
-    def initOctahedron(self):
+    def _initOctahedron(self):
         """
         Initialize vertices for a regular octahedron.
 
         The 6 vertices of a regular octahedron centered at the origin are:
         (±1, 0, 0), (0, ±1, 0), (0, 0, ±1)
         """
-        self.shape_name = "octahedron"
+        self.shape = "octahedron"
         self.vertices = [
             glm.vec3(1, 0, 0),
             glm.vec3(-1, 0, 0),
@@ -121,7 +108,7 @@ class Polyhedron(Graph):
             glm.vec3(0, 0, -1)
         ]
 
-    def initDodecahedron(self):
+    def _initDodecahedron(self):
         """
         Initialize vertices for a regular dodecahedron.
 
@@ -132,7 +119,7 @@ class Polyhedron(Graph):
         (±φ, ±1/φ, 0) - 4 vertices
         where φ = (1 + sqrt(5)) / 2 (golden ratio)
         """
-        self.shape_name = "dodecahedron"
+        self.shape = "dodecahedron"
 
         # Calculate φ = (1 + sqrt(5)) / 2 (golden ratio)
         phi = (1 + math.sqrt(5)) / 2
@@ -176,7 +163,7 @@ class Polyhedron(Graph):
             glm.vec3(-phi, -inv_phi, 0)
         ])
 
-    def initIcosahedron(self):
+    def _initIcosahedron(self):
         """
         Initialize vertices for a regular icosahedron.
 
@@ -186,7 +173,7 @@ class Polyhedron(Graph):
         (±a, 0, ±1)
         where a = (1 + sqrt(5)) / 2 (golden ratio)
         """
-        self.shape_name = "icosahedron"
+        self.shape = "icosahedron"
 
         # Calculate a = (1 + sqrt(5)) / 2
         a = (1 + math.sqrt(5)) / 2
@@ -217,11 +204,121 @@ class Polyhedron(Graph):
             glm.vec3(-a, 0, -1)
         ])
 
-    def computeTopology(self):
+    def _computeTopology(self):
         """Orient the vertices and derive edges, neighbors, and faces."""
         self._orientAndAlign()
         self._computeEdges()
         self.computeFaces()
+
+    def _rebuildGraph(self, order):
+        # Map shape types to their initialization methods
+        shape_map = {
+            'tetrahedron': self._initTetrahedron,
+            'cube': self._initHexahedron,
+            'hexahedron': self._initHexahedron,
+            'octahedron': self._initOctahedron,
+            'dodecahedron': self._initDodecahedron,
+            'icosahedron': self._initIcosahedron
+        }
+        shape_map[self.shape]()
+        self._computeTopology()
+
+        # we only support frequencies 1, 2, and 3
+        MAX_ORDER = 3
+        MIN_ORDER = 1
+        if order > 1:
+            order = min(order, MAX_ORDER)
+            i = order
+            if self.shape == "hexahedron" or self.shape == "dodecahedron":
+                # for some shapes: add a vertex in the center of each face
+                #
+                #   o---------------o         o---------------o
+                #   |               |         |               |
+                #   |               |         |               |
+                #   |               |         |               |
+                #   |               |  --->   |       o       |
+                #   |               |         |               |
+                #   |               |         |               |
+                #   |               |         |               |
+                #   o---------------o         o---------------o
+                #
+                for face in self.faces:
+                    new_vertex = glm.vec3(0, 0, 0)
+                    for index in face.vertex_indices:
+                        new_vertex += self.vertices[index]
+                    self.vertices.append(glm.normalize(new_vertex))
+                # now all faces are triangles
+                self._computeTopology()
+                i -= 1
+            if i == 2:
+                # add a vertex in the center of each edge
+                #    o---------------o       o-------o-------o
+                #     \             /         \             /
+                #      \           /           \           /
+                #       \         /             \         /
+                #        \       /     ---->     o       o
+                #         \     /                 \     /
+                #          \   /                   \   /
+                #           \ /                     \ /
+                #            o                       o
+                #
+                for edge in self.edges:
+                    self.vertices.append(glm.normalize(self.vertices[edge[0]] + self.vertices[edge[1]]))
+                self._computeTopology()
+            elif i == 3:
+                # divide each arc by three, then add one vertex in the center
+                #    o-----------------o       o-----o-----o-----o
+                #     \               /         \               /
+                #      \             /           \             /
+                #       \           /             o     o     o
+                #        \         /               \         /
+                #         \       /     ---->       \       /
+                #          \     /                   o     o
+                #           \   /                     \   /
+                #            \ /                       \ /
+                #             o                         o
+                #
+                # compute the points at 1/3 and 2/3 along the arc from A to B and
+                # append both to new_vertices
+
+                # util function for dividing edge into thirds
+                # along the arc from A to B rather than
+                # along the straight line from A to B
+                def add_two_points(new_vertices, point_A, point_B):
+                    axis = glm.cross(point_A, point_B)
+                    axis_length = glm.length(axis)
+                    # angle is the sweep to move point_A to point_B
+                    angle = math.acos(axis_length)
+                    # we want new points that are one-third of angle
+                    delta_angle = angle/3.0
+                    # the coefficients of the quaternion use sines of half of delta_angle
+                    c = math.cos(delta_angle/2.0)
+                    s = math.sin(delta_angle/2.0)   # the w-component scales with c
+                    axis *= s / axis_length         # the xyz components scale with s*normalized_axis
+                    dQ = glm.quat(c, axis.x, axis.y, axis.z)
+                    new_vertices.append(dQ * point_A) # rotate point_A from the left toward B
+                    new_vertices.append(point_B * dQ) # rotate point_B from the right toward A
+
+                for face in self.faces:
+                    new_vertices = []
+                    indices = face.vertex_indices
+                    num_indices = len(indices)
+                    # add two vertices for each face edge
+                    for j in range(num_indices - 1):
+                        add_two_points(new_vertices, self.vertices[indices[j]], self.vertices[indices[j+1]])
+                    # don't forget the edge between first and last vertices
+                    add_two_points(new_vertices, self.vertices[indices[0]], self.vertices[indices[num_indices-1]])
+                    # add a final point that is the average of new_vertices
+                    new_vertex = glm.vec3(0, 0, 0)
+                    for vertex in new_vertices:
+                        new_vertex += vertex
+                        self.vertices.append(vertex)
+                    self.vertices.append(new_vertex / len(new_vertices))
+                self._computeTopology()
+        else:
+            order = MIN_ORDER
+        self.order = order
+
 
     def _orientAndAlign(self):
         """
@@ -366,8 +463,9 @@ class Polyhedron(Graph):
             if dist < min_dist:
                 min_dist = dist
 
-        edge_length = min_dist
-        threshold = 1.4 * edge_length
+        # TODO: tune the NEIGHBOR_PROXIMITY_FACTOR used for determining neighbors
+        NEIGHBOR_PROXIMITY_FACTOR = 1.3
+        neighbor_threshold = NEIGHBOR_PROXIMITY_FACTOR * min_dist
 
         # For each Vertex, check all Vertices with higher indices
         self.edges = []
@@ -375,7 +473,7 @@ class Polyhedron(Graph):
         for i in range(len(self.vertices)):
             for j in range(i + 1, len(self.vertices)):
                 dist = glm.distance(self.vertices[i], self.vertices[j])
-                if dist <= threshold:
+                if dist <= neighbor_threshold:
                     # Add Edge with lower index first
                     self.edges.append((i, j))
                     num_edges += 1
@@ -397,9 +495,9 @@ if __name__ == "__main__":
         "icosahedron"
     ]
 
-    for shape_name in shapes:
+    for shape in shapes:
         print("=" * 60)
-        print(shape_name.upper())
+        print(shape.upper())
         print("=" * 60)
-        shape = Polyhedron(shape_name, verbose=True)
+        shape = Polyhedron(shape, verbose=True)
         print("\n")

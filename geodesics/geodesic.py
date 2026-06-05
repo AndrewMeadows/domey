@@ -36,7 +36,7 @@ class Geodesic:
     arcs to produce "twisted and truncated" structures.
     """
 
-    def __init__(self, shape_type=None, verbose=False):
+    def __init__(self, shape_type=None, order=1, verbose=False):
         """
         Initialize a geodesic dome with an optional base shape type.
 
@@ -44,11 +44,12 @@ class Geodesic:
             shape_type: Optional string specifying the base polyhedron shape
                        ('tetrahedron', 'hexahedron', 'octahedron',
                         'dodecahedron', 'icosahedron').
+            order: Subdivision order of the base polyhedron (1, 2, or 3).
         """
         self.verbose = verbose
         self.arcs = []
         self.geo_graph = Graph(verbose)
-        self.polyhedron = Polyhedron(shape_type, verbose)
+        self.polyhedron = Polyhedron(shape_type, order, verbose)
         self.geo_vertices = []
         self.arc_segments = []
         self.setTwistAngle(0.0)

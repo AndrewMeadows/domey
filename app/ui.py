@@ -1,6 +1,6 @@
 from imgui_bundle import imgui
 
-from .state import AppState, ObjectDisplay, SHAPES
+from .state import AppState, ObjectDisplay, ORDERS, SHAPES
 
 _TWIST_MIN, _TWIST_MAX = -1.5708, 1.5708
 _BOX_WIDTH = 150
@@ -49,6 +49,16 @@ def draw_ui(state: AppState) -> None:
             selected = name == current
             if imgui.selectable(name, selected)[0]:
                 state.set_geometry(shape_name=name)
+            if selected:
+                imgui.set_item_default_focus()
+        imgui.end_combo()
+
+    current_order = state.geometry.order
+    if imgui.begin_combo("order", str(current_order)):
+        for value in ORDERS:
+            selected = value == current_order
+            if imgui.selectable(str(value), selected)[0]:
+                state.set_geometry(order=value)
             if selected:
                 imgui.set_item_default_focus()
         imgui.end_combo()
