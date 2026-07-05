@@ -3,8 +3,8 @@ from imgui_bundle import imgui
 from .state import AppState, ORDERS, SHAPES
 
 _TWIST_MIN, _TWIST_MAX = -1.5708, 1.5708
-_BOX_WIDTH = 150
-_BOX_HEIGHT = 130
+_BOX_WIDTH = 120
+_BOX_HEIGHT = 120
 
 
 def _twist_slider(state: AppState) -> None:
