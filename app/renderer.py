@@ -85,7 +85,11 @@ class Renderer:
         self._cached_inputs = inputs
 
     # Per-object colors so the two objects stay distinguishable when both show.
-    _GEO_FACE = (0.30, 0.55, 0.90, 1.0)
+    # The geodesic is the outer surface: translucent (_GEO_FACE) when the
+    # polyhedron is enabled so it stays visible inside, but fully opaque
+    # (_GEO_FACE_OPAQUE) when the geodesic is shown on its own.
+    _GEO_FACE = (0.30, 0.55, 0.90, 0.65)
+    _GEO_FACE_OPAQUE = (0.30, 0.55, 0.90, 1.0)
     _GEO_EDGE = (0.95, 0.78, 0.30)
     _GEO_POINT = (0.30, 0.85, 0.95)
     _POLY_FACE = (0.55, 0.50, 0.40, 1.0)
@@ -103,19 +107,42 @@ class Renderer:
         # (flags, faces, edges, points, face_color, edge_color, point_color)
         objects = []
         if geodesic.enabled:
+            # Translucent only when there's a polyhedron behind it to reveal.
+            geo_face = self._GEO_FACE if polyhedron.enabled else self._GEO_FACE_OPAQUE
             objects.append((geodesic, self._geo_faces, self._geo_edges, self._geo_points,
-                            self._GEO_FACE, self._GEO_EDGE, self._GEO_POINT))
+                            geo_face, self._GEO_EDGE, self._GEO_POINT))
         if polyhedron.enabled:
             objects.append((polyhedron, self._poly_faces, self._poly_edges, self._poly_points,
                             self._POLY_FACE, self._POLY_EDGE, self._POLY_POINT))
 
-        # Opaque faces first (depth writes on) so edges and vertices drawn after
-        # are depth-tested against the surfaces and hidden on the far side.
+        # Faces in two passes so a translucent object (the geodesic) blends over
+        # whatever is behind it, revealing the opaque polyhedron nested inside.
+        # Cull back faces throughout: both objects are wound CCW as seen from
+        # outside the sphere, so away-facing triangles never draw and can't blend
+        # over the near side of a translucent shell.
         self._tri_mvp.write(mvp_bytes)
+        ctx.enable(moderngl.CULL_FACE)
+
+        # 1) Opaque faces first, depth writes on, so later geometry is correctly
+        #    occluded and translucent faces have something to blend against.
         for flags, faces, _e, _p, face_color, _ec, _pc in objects:
-            if flags.show_faces:
+            if flags.show_faces and face_color[3] >= 1.0:
                 self._tri_color.value = face_color
                 faces.render(moderngl.TRIANGLES)
+
+        # 2) Translucent faces last, with blending on and depth writes off so the
+        #    surface doesn't occlude itself or hide the inner object; depth test
+        #    still keeps faces behind the opaque geometry from showing through.
+        ctx.enable(moderngl.BLEND)
+        ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
+        ctx.depth_mask = False
+        for flags, faces, _e, _p, face_color, _ec, _pc in objects:
+            if flags.show_faces and face_color[3] < 1.0:
+                self._tri_color.value = face_color
+                faces.render(moderngl.TRIANGLES)
+        ctx.depth_mask = True
+        ctx.disable(moderngl.BLEND)
+        ctx.disable(moderngl.CULL_FACE)
 
         self._line_mvp.write(mvp_bytes)
         for flags, _f, edges, _p, _fc, edge_color, _pc in objects:
