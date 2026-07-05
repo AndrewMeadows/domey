@@ -9,7 +9,7 @@
 
 import math
 from pyglm import glm
-from meshics.graph import Graph
+from .graph import Graph
 
 
 class Polyhedron(Graph):

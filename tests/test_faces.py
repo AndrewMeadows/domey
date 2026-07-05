@@ -11,7 +11,7 @@ Each face is checked for three invariants:
 import pytest
 from pyglm import glm
 
-from geodesics import Polyhedron, Geodesic
+from src import Polyhedron, Geodesic
 
 
 def _is_outward(vertices, loop):

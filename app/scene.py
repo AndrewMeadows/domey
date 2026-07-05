@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import numpy as np
 from pyglm import glm
 
-from geodesics import Geodesic
+from src import Geodesic
 
 from .state import GeometryInputs
 

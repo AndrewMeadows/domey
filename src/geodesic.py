@@ -8,8 +8,8 @@
 
 import math
 from pyglm import glm
-from meshics.graph import Graph, sort_indices
-from meshics.face import Face
+from .graph import Graph, sort_indices
+from .face import Face
 from .polyhedron import Polyhedron
 from .arc import Arc, angle_between
 

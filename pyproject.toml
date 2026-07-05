@@ -26,8 +26,8 @@ classifiers = [
 ]
 keywords = ["geodesic", "polyhedron", "geometry", "dome", "platonic-solids"]
 
-# meshics is pure Python; geodesics adds PyGLM. The app/viewer stack lives in
-# the optional "app" extra so the compute library installs without OpenGL deps.
+# The src compute library is pure Python plus PyGLM. The app/viewer stack lives
+# in the optional "app" extra so the compute library installs without OpenGL deps.
 dependencies = [
     "PyGLM>=2.5.0",
 ]
@@ -53,7 +53,7 @@ Repository = "https://github.com/yourusername/domey"
 Issues = "https://github.com/yourusername/domey/issues"
 
 [tool.setuptools]
-packages = ["meshics", "geodesics", "app"]
+packages = ["src", "app"]
 
 [tool.setuptools.package-data]
 app = ["shaders/*.vert", "shaders/*.frag"]
