@@ -12,6 +12,7 @@ from moderngl_window.integrations.imgui_bundle import ModernglWindowRenderer
 
 from .camera import orbit, view_proj, zoom
 from .renderer import Renderer
+from .scene import get_geodesic
 from .state import AppState
 from .ui import draw_ui
 
@@ -34,6 +35,7 @@ class GeodesicViewer(mglw.WindowConfig):
 
     def on_render(self, time: float, frame_time: float) -> None:
         self.renderer.ensure_geometry(self.state.geometry)
+        geodesic = get_geodesic(self.state.geometry)
 
         aspect = self.wnd.viewport_width / max(1, self.wnd.viewport_height)
         mvp = view_proj(self.state.camera, aspect)
@@ -45,7 +47,7 @@ class GeodesicViewer(mglw.WindowConfig):
         )
 
         imgui.new_frame()
-        draw_ui(self.state)
+        draw_ui(self.state, geodesic)
         imgui.render()
         self.imgui.render(imgui.get_draw_data())
 

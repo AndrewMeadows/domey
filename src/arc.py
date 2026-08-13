@@ -78,6 +78,13 @@ class Arc:
         self.intersectionA = 1.0
         self.intersectionB = -1.0
 
+        # Indices of the arcs responsible for these endpoints/intersections.
+        # They are filled while the geodesic's neighboring arcs are processed.
+        self.endpointA_arc = None
+        self.endpointB_arc = None
+        self.intersectionA_arc = None
+        self.intersectionB_arc = None
+
     def getAxis(self):
         return glm.normalize(glm.cross(self.pivot, self.point))
 
@@ -189,15 +196,19 @@ class Arc:
             intersection_point = -intersection_point
         if trim_distance > 0.0:
             self.trimA = trim_distance
+            self.endpointA_arc = other_arc.index
         else:
             self.trimB = trim_distance
+            self.endpointB_arc = other_arc.index
 
         # store intersection distance on other_arc
         intersection_distance = other_arc.getProjectedDistance(intersection_point)
         if intersection_distance > 0.0:
             other_arc.intersectionA = intersection_distance
+            other_arc.intersectionA_arc = self.index
         else:
             other_arc.intersectionB = intersection_distance
+            other_arc.intersectionB_arc = self.index
 
     def addIntersection(self, point):
         # compute distance to point

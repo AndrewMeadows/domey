@@ -7,6 +7,31 @@ _BOX_WIDTH = 120
 _BOX_HEIGHT = 120
 
 
+def _arc_value(value):
+    return "—" if value is None else f"{value:.6f}"
+
+
+def _draw_arcs_window(geodesic) -> None:
+    imgui.set_next_window_pos(imgui.ImVec2(360, 10), imgui.Cond_.first_use_ever.value)
+    imgui.set_next_window_size(imgui.ImVec2(500, 260), imgui.Cond_.first_use_ever.value)
+    imgui.begin("Arcs")
+    imgui.text("count  ID  length       start (arc, angle)       end (arc, angle)")
+    imgui.separator()
+    for group in geodesic.getArcGroups():
+        imgui.text(
+            f"{group.count:5d}  {group.id}   {_arc_value(group.arc_length)}   "
+            f"({group.start_endpoint_arc or '—'}, {_arc_value(group.start_endpoint_angle)})   "
+            f"({group.end_endpoint_arc or '—'}, {_arc_value(group.end_endpoint_angle)})"
+        )
+        if group.intersection_distances:
+            intersections = ", ".join(
+                f"{arc or '—'}:{distance:.6f}"
+                for arc, distance in zip(group.intersection_arcs, group.intersection_distances)
+            )
+            imgui.text(f"       intersections (arc: distance): {intersections}")
+    imgui.end()
+
+
 def _twist_slider(state: AppState) -> None:
     """Twist slider; scrolling the mouse wheel while hovering nudges it."""
     imgui.set_next_item_width(-1)
@@ -23,7 +48,7 @@ def _twist_slider(state: AppState) -> None:
         state.set_geometry(twist_angle=new_twist)
 
 
-def draw_ui(state: AppState) -> None:
+def draw_ui(state: AppState, geodesic=None) -> None:
     imgui.set_next_window_pos(imgui.ImVec2(10, 10), imgui.Cond_.first_use_ever.value)
     imgui.set_next_window_size(imgui.ImVec2(340, 260), imgui.Cond_.first_use_ever.value)
     imgui.begin("Geodesic")
@@ -94,3 +119,5 @@ def draw_ui(state: AppState) -> None:
     imgui.end_child()
 
     imgui.end()
+    if geodesic is not None:
+        _draw_arcs_window(geodesic)

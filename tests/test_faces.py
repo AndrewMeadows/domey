@@ -82,6 +82,15 @@ def test_zero_twist_matches_base_polyhedron(shape, count, sides):
     _assert_faces(geodesic.geo_graph, count, sides)
 
 
+@pytest.mark.parametrize("shape", [
+    "tetrahedron", "hexahedron", "octahedron", "dodecahedron", "icosahedron",
+])
+def test_first_order_regular_zero_twist_has_one_arc_group(shape):
+    """All edges of a regular first-order base share one zero-twist geometry."""
+    geodesic = Geodesic(shape, order=1)
+    assert len(geodesic.getArcGroups()) == 1
+
+
 def test_rhombic_dodecahedron_aliases():
     """The requested common misspelling and display-friendly spellings work."""
     for name in ("rombic_dodecahedron", "rhombic-dodecahedron", "rhombic dodecahedron"):

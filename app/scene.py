@@ -48,6 +48,11 @@ def _get_geodesic(shape_name: str, twist: float, order: int) -> Geodesic:
     return g
 
 
+def get_geodesic(inputs: GeometryInputs) -> Geodesic:
+    """Return the cached geodesic for UI inspection and rendering."""
+    return _get_geodesic(inputs.shape_name, inputs.twist_angle, inputs.order)
+
+
 def _slerp(a: glm.vec3, b: glm.vec3, t: float) -> glm.vec3:
     """Spherical interpolation between two unit vectors; result is on the sphere."""
     dot = max(-1.0, min(1.0, glm.dot(a, b)))
@@ -183,7 +188,7 @@ def _points_to_array(points, radius) -> np.ndarray:
 
 
 def build_geometry(inputs: GeometryInputs) -> GeometryBuffers:
-    g = _get_geodesic(inputs.shape_name, inputs.twist_angle, inputs.order)
+    g = get_geodesic(inputs)
     graph = g.geo_graph
     polyhedron = g.getPolyhedron()
 

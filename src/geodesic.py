@@ -7,6 +7,8 @@
 #
 
 import math
+from dataclasses import dataclass
+from typing import Optional, Tuple
 from pyglm import glm
 from .graph import Graph, sort_indices
 from .face import Face
@@ -14,6 +16,19 @@ from .polyhedron import Polyhedron
 from .arc import Arc, angle_between
 
 RAD_TO_DEG = 180.0 / math.pi
+
+
+@dataclass
+class ArcGroup:
+    id: str
+    count: int
+    arc_length: float
+    start_endpoint_arc: Optional[str]
+    end_endpoint_arc: Optional[str]
+    start_endpoint_angle: Optional[float]
+    end_endpoint_angle: Optional[float]
+    intersection_distances: Tuple[float, ...]
+    intersection_arcs: Tuple[Optional[str], ...]
 
 def find_nearest_index(vertices, point):
     """
@@ -52,6 +67,7 @@ class Geodesic:
         self.polyhedron = Polyhedron(shape_type, order, verbose)
         self.geo_vertices = []
         self.arc_segments = []
+        self.arc_groups = []
         self.setTwistAngle(0.0)
 
     def getPolyhedron(self):
@@ -72,6 +88,7 @@ class Geodesic:
             self._computeGeoVertices()
             self._computeArcSegments()
             self._computeGeoGraph()
+        self._computeArcGroups()
 
     def _computeBaseGeoGraph(self):
         """
@@ -286,6 +303,101 @@ class Geodesic:
                 trimmed_faces.append(Face(sort_indices(new_indices)))
 
         self.geo_graph.faces = trimmed_faces
+
+    ARC_GROUP_RELATIVE_TOLERANCE = 1.0e-3
+
+    @classmethod
+    def _same_measure(cls, value_a, value_b):
+        """Compare positive geometry measures using symmetric relative error."""
+        denominator = value_a + value_b
+        if denominator == 0.0:
+            return value_a == value_b
+        relative_error = 0.5 * abs(value_a - value_b) / denominator
+        return relative_error < cls.ARC_GROUP_RELATIVE_TOLERANCE
+
+    def _arc_record(self, arc):
+        endpoint_b_angle = (None if arc.endpointB_arc is None else
+                            arc.getIntersectionAngle(self.arcs[arc.endpointB_arc]))
+        endpoint_a_angle = (None if arc.endpointA_arc is None else
+                            arc.getIntersectionAngle(self.arcs[arc.endpointA_arc]))
+        if endpoint_a_angle is not None and (endpoint_b_angle is None or
+                                             endpoint_a_angle > endpoint_b_angle):
+            start_position, start_arc, start_angle = arc.trimA, arc.endpointA_arc, endpoint_a_angle
+            end_arc, end_angle = arc.endpointB_arc, endpoint_b_angle
+        else:
+            start_position, start_arc, start_angle = arc.trimB, arc.endpointB_arc, endpoint_b_angle
+            end_arc, end_angle = arc.endpointA_arc, endpoint_a_angle
+
+        crossings = [(abs(position - start_position), other)
+                     for position, other in ((arc.intersectionB, arc.intersectionB_arc),
+                                             (arc.intersectionA, arc.intersectionA_arc))
+                     if other is not None]
+        crossings.sort()
+        return {"index": arc.index, "length": arc.trimA - arc.trimB,
+                "start_arc": start_arc, "end_arc": end_arc,
+                "start_angle": start_angle, "end_angle": end_angle,
+                "distances": tuple(item[0] for item in crossings),
+                "intersection_arcs": tuple(item[1] for item in crossings)}
+
+    def _same_arc_geometry(self, record, group):
+        if not self._same_measure(record["length"], group["length"]):
+            return False
+        if len(record["distances"]) != len(group["distances"]):
+            return False
+        if not all(self._same_measure(a, b) for a, b in
+                   zip(record["distances"], group["distances"])):
+            return False
+        for key in ("start_angle", "end_angle"):
+            a, b = record[key], group[key]
+            if (a is None) != (b is None) or (a is not None and not self._same_measure(a, b)):
+                return False
+        return True
+
+    ARC_GROUP_ZERO_TWIST_PROXY = 1.0e-3
+
+    def _computeArcGroups(self):
+        # At zero twist all neighboring endpoints coincide exactly, so the
+        # endpoint/intersection metadata is degenerate.  Build only the group
+        # description from a tiny non-zero proxy twist; keep the actual arcs,
+        # graph, and rendered geometry at the requested zero twist.
+        saved_twist = self.twist_angle
+        saved_arcs = self.arcs
+        if saved_twist == 0.0:
+            self.twist_angle = self.ARC_GROUP_ZERO_TWIST_PROXY
+            self._computeTwistedArcs()
+        records = [self._arc_record(arc) for arc in self.arcs]
+        groups = []
+        for record in records:
+            group = next((item for item in groups
+                          if self._same_arc_geometry(record, item)), None)
+            if group is None:
+                group = {**record, "records": []}
+                groups.append(group)
+            group["records"].append(record)
+        groups.sort(key=lambda item: item["length"], reverse=True)
+
+        arc_ids = {record["index"]: chr(ord("A") + group_index)
+                   for group_index, group in enumerate(groups)
+                   for record in group["records"]}
+        self.arc_groups = []
+        for group_index, group in enumerate(groups):
+            record = group["records"][0]
+            group_id = chr(ord("A") + group_index)
+            self.arc_groups.append(ArcGroup(
+                id=group_id, count=len(group["records"]), arc_length=record["length"],
+                start_endpoint_arc=arc_ids.get(record["start_arc"]),
+                end_endpoint_arc=arc_ids.get(record["end_arc"]),
+                start_endpoint_angle=record["start_angle"],
+                end_endpoint_angle=record["end_angle"],
+                intersection_distances=record["distances"],
+                intersection_arcs=tuple(arc_ids.get(i) for i in record["intersection_arcs"]),
+            ))
+        if saved_twist == 0.0:
+            self.arcs = saved_arcs
+            self.twist_angle = saved_twist
+
+    def getArcGroups(self):
+        return list(self.arc_groups)
 
 
     def computeIntersectionAngle(self, arcs):
