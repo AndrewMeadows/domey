@@ -8,6 +8,8 @@ Each face is checked for three invariants:
   * the lowest vertex index leading the loop (the Face ordering contract).
 """
 
+import math
+
 import pytest
 from pyglm import glm
 
@@ -56,27 +58,80 @@ def _assert_faces(graph, expected_count, expected_sides):
 
 # Platonic solids exercise Graph.computeFaces() directly (Polyhedron is a Graph).
 # (shape name, expected face count, sides per face)
-PLATONIC_SOLIDS = [
+BASE_SOLIDS = [
     ("tetrahedron", 4, 3),
     ("hexahedron", 6, 4),
     ("octahedron", 8, 3),
     ("dodecahedron", 12, 5),
     ("icosahedron", 20, 3),
+    ("rhombic_dodecahedron", 12, 4),
 ]
 
 
-@pytest.mark.parametrize("shape, count, sides", PLATONIC_SOLIDS)
+@pytest.mark.parametrize("shape, count, sides", BASE_SOLIDS)
 def test_platonic_solid_faces(shape, count, sides):
     _assert_faces(Polyhedron(shape), count, sides)
 
 
-@pytest.mark.parametrize("shape, count, sides", PLATONIC_SOLIDS)
+@pytest.mark.parametrize("shape, count, sides", BASE_SOLIDS)
 def test_zero_twist_matches_base_polyhedron(shape, count, sides):
     """With no twist the base vertices are not opened, so the geodesic's faces
     match its base polyhedron exactly (same count and same shape)."""
     geodesic = Geodesic(shape)
     geodesic.setTwistAngle(0.0)
     _assert_faces(geodesic.geo_graph, count, sides)
+
+
+def test_rhombic_dodecahedron_aliases():
+    """The requested common misspelling and display-friendly spellings work."""
+    for name in ("rombic_dodecahedron", "rhombic-dodecahedron", "rhombic dodecahedron"):
+        solid = Polyhedron(name)
+        assert solid.shape == "rhombic_dodecahedron"
+        _assert_faces(solid, 12, 4)
+
+
+@pytest.mark.parametrize("order, vertices, edges, faces", [
+    (1, 14, 24, 12),
+    (2, 26, 72, 48),
+    (3, 98, 288, 192),
+])
+def test_rhombic_dodecahedron_orders(order, vertices, edges, faces):
+    solid = Polyhedron("rhombic_dodecahedron", order=order)
+    assert solid.order == order
+    assert (len(solid.vertices), len(solid.edges)) == (vertices, edges)
+    _assert_faces(solid, faces, 3 if order > 1 else 4)
+
+
+@pytest.mark.parametrize("twist", [0.1, -0.1])
+def test_rhombic_dodecahedron_geodesic_faces(twist):
+    """Twisting opens a new face matching each base vertex's degree."""
+    geodesic = Geodesic("rhombic_dodecahedron")
+    geodesic.setTwistAngle(twist)
+    # Eight degree-3 cube-corner vertices open triangles; the six degree-4
+    # axial vertices add quads alongside the 12 original rhombic faces.
+    _assert_faces(geodesic.geo_graph, 26, {3: 8, 4: 18})
+
+
+@pytest.mark.parametrize("twist", [0.1, -0.1])
+@pytest.mark.parametrize("order, count, sides", [
+    (2, 74, {3: 48, 4: 12, 6: 8, 8: 6}),
+    (3, 290, {3: 192, 4: 12, 6: 80, 8: 6}),
+])
+def test_higher_order_rhombic_dodecahedron_geodesic_faces(
+    twist, order, count, sides
+):
+    geodesic = Geodesic("rhombic_dodecahedron", order=order)
+    geodesic.setTwistAngle(twist)
+    _assert_faces(geodesic.geo_graph, count, sides)
+
+
+def test_rhombic_dodecahedron_full_twist_slider_range():
+    """Topology transitions across the UI slider must not create empty faces."""
+    geodesic = Geodesic("rhombic_dodecahedron")
+    for step in range(201):
+        twist = -math.pi / 2 + math.pi * step / 200
+        geodesic.setTwistAngle(twist)
+        assert all(len(face.vertex_indices) >= 3 for face in geodesic.geo_graph.faces)
 
 
 # A negative twist opens the base vertices the opposite way, but by symmetry the
@@ -102,4 +157,3 @@ def test_icosahedron_geodesic_faces(twist):
     geodesic = Geodesic("icosahedron")
     geodesic.setTwistAngle(twist)
     _assert_faces(geodesic.geo_graph, 32, {3: 20, 5: 12})
-

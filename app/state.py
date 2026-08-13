@@ -6,6 +6,7 @@ SHAPES = (
     "octahedron",
     "dodecahedron",
     "icosahedron",
+    "rhombic_dodecahedron",
 )
 
 ORDERS = (1, 2, 3)

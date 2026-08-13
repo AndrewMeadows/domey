@@ -1,7 +1,7 @@
 #
 # polyhedron.py -- Regular polyhedron as a special case of Graph
 #
-# Polyhedron picks the vertices of one of the five regular (Platonic) solids,
+# Polyhedron picks the vertices of a supported sphere-centered solid,
 # then derives the edges/neighbors/faces from them. Graph (see graph.py) is the
 # plain data container holding those members; Polyhedron supplies both the
 # vertex-generating logic for each solid and the topology computation.
@@ -14,10 +14,9 @@ from .graph import Graph
 
 class Polyhedron(Graph):
     """
-    A regular polyhedron: a Graph whose vertices come from a Platonic solid.
+    A sphere-centered polyhedron represented as a graph.
 
-    Provides methods to initialize the vertices of each of the five regular
-    polyhedra.
+    Provides the five regular (Platonic) solids and a rhombic dodecahedron.
     """
 
     VALID_SHAPES = {
@@ -26,7 +25,8 @@ class Polyhedron(Graph):
         'hexahedron',
         'octahedron',
         'dodecahedron',
-        'icosahedron'
+        'icosahedron',
+        'rhombic_dodecahedron',
     }
 
     def __init__(self, shape=None, order=1, verbose=False):
@@ -47,13 +47,13 @@ class Polyhedron(Graph):
         self.shape = ""
 
         if shape is not None:
-            shape_name_lower = shape.lower()
+            shape_name_lower = shape.lower().replace("-", "_").replace(" ", "_")
             if shape_name_lower not in self.VALID_SHAPES:
                 raise ValueError(
                     f"Invalid shape '{shape}'. "
                     f"Valid options are: {', '.join(sorted(self.VALID_SHAPES))}"
                 )
-            self.shape =  shape_name_lower
+            self.shape = shape_name_lower
             self._rebuildGraph(order)
 
 
@@ -204,6 +204,26 @@ class Polyhedron(Graph):
             glm.vec3(-a, 0, -1)
         ])
 
+    def _initRhombicDodecahedron(self):
+        """Initialize the 14 vertices of a rhombic dodecahedron.
+
+        Eight vertices are the corners of a cube and the other six lie on the
+        coordinate axes. The initial vertices are projected onto the unit sphere
+        later.
+        """
+        self.shape = "rhombic_dodecahedron"
+        self.vertices = [
+            glm.vec3(x, y, z)
+            for x in (-1, 1)
+            for y in (-1, 1)
+            for z in (-1, 1)
+        ]
+        self.vertices.extend([
+            glm.vec3(2, 0, 0), glm.vec3(-2, 0, 0),
+            glm.vec3(0, 2, 0), glm.vec3(0, -2, 0),
+            glm.vec3(0, 0, 2), glm.vec3(0, 0, -2),
+        ])
+
     def _computeTopology(self):
         """Orient the vertices and derive edges, neighbors, and faces."""
         self._orientAndAlign()
@@ -218,7 +238,8 @@ class Polyhedron(Graph):
             'hexahedron': self._initHexahedron,
             'octahedron': self._initOctahedron,
             'dodecahedron': self._initDodecahedron,
-            'icosahedron': self._initIcosahedron
+            'icosahedron': self._initIcosahedron,
+            'rhombic_dodecahedron': self._initRhombicDodecahedron,
         }
         shape_map[self.shape]()
         self._computeTopology()
@@ -229,7 +250,9 @@ class Polyhedron(Graph):
         if order > 1:
             order = min(order, MAX_ORDER)
             i = order
-            if self.shape == "hexahedron" or self.shape == "dodecahedron":
+            if self.shape in {
+                "hexahedron", "dodecahedron", "rhombic_dodecahedron"
+            }:
                 # for some shapes: add a vertex in the center of each face
                 #
                 #   o---------------o         o---------------o
@@ -275,6 +298,7 @@ class Polyhedron(Graph):
                 self._computeTopology()
                 i -= 1
 
+            # if i > 1 then we expect all faces to be triangles
             if i == 2:
                 # add a vertex in the center of each edge
                 #    o---------------o       o-------o-------o
@@ -474,15 +498,35 @@ class Polyhedron(Graph):
             self.edges = []
             return self.edges
 
-        # Find minimum distance from vertex 0 to any other
-        v0 = self.vertices[0]
+        # Find a reference nearest-neighbor distance. For the regular solids any
+        # vertex is representative. The rhombic dodecahedron has two vertex
+        # orbits (degree 3 and degree 4), so we need to use the global minimum instead.
+        # Fortunately, this method is universal.
         min_dist = float('inf')
-        for i in range(1, len(self.vertices)):
-            dist = glm.distance(v0, self.vertices[i])
-            if dist < min_dist:
-                min_dist = dist
+        for i in range(len(self.vertices)):
+            for j in range(i + 1, len(self.vertices)):
+                min_dist = min(
+                    min_dist, glm.distance(self.vertices[i], self.vertices[j])
+                )
 
-        NEIGHBOR_PROXIMITY_FACTOR = 1.395
+        # After radial projection, adjacent cube-corner vertices of a rhombic
+        # dodecahedron are only slightly farther apart than its true edges.
+        # Use a tighter cutoff for its topology so those diagonals are not
+        # mistaken for edges.
+        if self.shape == "rhombic_dodecahedron" and len(self.vertices) == 14:
+            NEIGHBOR_PROXIMITY_FACTOR = 1.1
+        elif self.shape == "rhombic_dodecahedron" and len(self.vertices) == 26:
+            # Retain both the original rhombic edges and the four spokes from
+            # each newly inserted face center. The next distance band consists
+            # of unrelated face-center pairs and remains above this cutoff.
+            NEIGHBOR_PROXIMITY_FACTOR = 1.525
+        elif self.shape == "rhombic_dodecahedron" and len(self.vertices) == 98:
+            # Order 3 adds a midpoint on every edge of the order-2 triangular
+            # mesh. Include both half-edges and the three midpoint-to-midpoint
+            # edges that split each old triangle into four.
+            NEIGHBOR_PROXIMITY_FACTOR = 1.6
+        else:
+            NEIGHBOR_PROXIMITY_FACTOR = 1.395
         neighbor_threshold = NEIGHBOR_PROXIMITY_FACTOR * min_dist
 
         # For each Vertex, check all Vertices with higher indices

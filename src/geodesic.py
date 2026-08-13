@@ -246,6 +246,10 @@ class Geodesic:
         trimmed_faces = []
         for face in faces:
             indices = list(face.vertex_indices)
+            if len(indices) < 3:
+                # A topology transition at an extreme twist can collapse a
+                # traced loop below the minimum size of a polygon.
+                continue
             if len(indices) == 3:
                 # trivial case: a triangle has no mid-arc vertices to remove
                 trimmed_faces.append(face)
@@ -272,9 +276,14 @@ class Geodesic:
                 parallel = abs(1.0 - abs(glm.dot(arriving, leaving))) < 0.01
                 if not parallel:
                     new_indices.append(indices[i])
-            # Trimming can drop the leading vertex; restore the Face invariant
-            # that the lowest index leads (cyclic order is preserved).
-            trimmed_faces.append(Face(sort_indices(new_indices)))
+            # Near a topology transition every edge of a traced loop can lie on
+            # the same great circle. In that case trimming removes the entire
+            # loop; it is degenerate and should not become a rendered face.
+            if len(new_indices) >= 3:
+                # Trimming can drop the leading vertex; restore the Face
+                # invariant that the lowest index leads (cyclic order is
+                # preserved).
+                trimmed_faces.append(Face(sort_indices(new_indices)))
 
         self.geo_graph.faces = trimmed_faces
 
@@ -333,4 +342,3 @@ class Geodesic:
 #        intersection_angle = dome.computeIntersectionAngle(arcs)
 #
 #        print(f"\nintersection_angle={intersection_angle:.4} ({intersection_angle * RAD_TO_DEG:.4} degrees)")
-
