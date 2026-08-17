@@ -3,47 +3,68 @@ from imgui_bundle import imgui
 from .state import AppState, ORDERS, SHAPES
 
 _TWIST_MIN, _TWIST_MAX = -1.5708, 1.5708
+_TWIST_WHEEL_STEPS = 100 # coarse tuning
+_TWIST_KEY_STEPS = 1000  # fine tuning
 _BOX_WIDTH = 120
 _BOX_HEIGHT = 120
 
 
-def _arc_value(value):
-    return "—" if value is None else f"{value:.6f}"
+def _arc_part_number(group):
+    """Format an arc group using its compact, human-readable part number."""
+    intersections = []
+    for distance, arc_id, angle in zip(
+        group.intersection_distances,
+        group.intersection_arcs,
+        group.intersection_angles,
+    ):
+        percentage = 100.0 * distance / group.arc_length
+        intersections.append(
+            f"{percentage:.6f}-{arc_id or '—'}-{angle:.6f}"
+        )
+
+    # The current geometry normally has two intersections. Keep the format
+    # stable if a degenerate or future arc group has fewer than two.
+    missing = "—-—-—"
+    while len(intersections) < 2:
+        intersections.append(missing)
+
+    return (
+        f"{group.count} {group.id}=0.0-{group.start_endpoint_arc or '—'}--"
+        f"{intersections[0]}--{intersections[1]}--"
+        f"100.0-{group.end_endpoint_arc or '—'}=({group.arc_length:.6f})"
+    )
 
 
 def _draw_arcs_window(geodesic) -> None:
     imgui.set_next_window_pos(imgui.ImVec2(360, 10), imgui.Cond_.first_use_ever.value)
     imgui.set_next_window_size(imgui.ImVec2(500, 260), imgui.Cond_.first_use_ever.value)
     imgui.begin("Arcs")
-    imgui.text("count  ID  length       start (arc, angle)       end (arc, angle)")
+    imgui.text("part number")
     imgui.separator()
     for group in geodesic.getArcGroups():
-        imgui.text(
-            f"{group.count:5d}  {group.id}   {_arc_value(group.arc_length)}   "
-            f"({group.start_endpoint_arc or '—'}, {_arc_value(group.start_endpoint_angle)})   "
-            f"({group.end_endpoint_arc or '—'}, {_arc_value(group.end_endpoint_angle)})"
-        )
-        if group.intersection_distances:
-            intersections = ", ".join(
-                f"{arc or '—'}:{distance:.6f}"
-                for arc, distance in zip(group.intersection_arcs, group.intersection_distances)
-            )
-            imgui.text(f"       intersections (arc: distance): {intersections}")
+        imgui.text(_arc_part_number(group))
     imgui.end()
 
 
 def _twist_slider(state: AppState) -> None:
-    """Twist slider; scrolling the mouse wheel while hovering nudges it."""
+    """Adjust twist coarsely with the wheel and finely with Up/Down."""
     imgui.set_next_item_width(-1)
     changed, new_twist = imgui.slider_float(
         "##twist", state.geometry.twist_angle, _TWIST_MIN, _TWIST_MAX
     )
     wheel = imgui.get_io().mouse_wheel
-    if imgui.is_item_hovered() and wheel != 0.0:
-        step = (_TWIST_MAX - _TWIST_MIN) / 100.0
-        new_twist = min(_TWIST_MAX, max(_TWIST_MIN,
-                        state.geometry.twist_angle + wheel * step))
-        changed = True
+    if imgui.is_item_hovered():
+        delta = wheel * ((_TWIST_MAX - _TWIST_MIN) / _TWIST_WHEEL_STEPS)
+        delta += imgui.is_key_pressed(imgui.Key.up_arrow) * (
+            (_TWIST_MAX - _TWIST_MIN) / _TWIST_KEY_STEPS
+        )
+        delta -= imgui.is_key_pressed(imgui.Key.down_arrow) * (
+            (_TWIST_MAX - _TWIST_MIN) / _TWIST_KEY_STEPS
+        )
+        if delta != 0.0:
+            new_twist = min(_TWIST_MAX, max(_TWIST_MIN,
+                            state.geometry.twist_angle + delta))
+            changed = True
     if changed:
         state.set_geometry(twist_angle=new_twist)
 

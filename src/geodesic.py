@@ -29,6 +29,7 @@ class ArcGroup:
     end_endpoint_angle: Optional[float]
     intersection_distances: Tuple[float, ...]
     intersection_arcs: Tuple[Optional[str], ...]
+    intersection_angles: Tuple[float, ...]
 
 def find_nearest_index(vertices, point):
     """
@@ -333,11 +334,16 @@ class Geodesic:
                                              (arc.intersectionA, arc.intersectionA_arc))
                      if other is not None]
         crossings.sort()
+        crossing_angles = tuple(
+            arc.getIntersectionAngle(self.arcs[other])
+            for _, other in crossings
+        )
         return {"index": arc.index, "length": arc.trimA - arc.trimB,
                 "start_arc": start_arc, "end_arc": end_arc,
                 "start_angle": start_angle, "end_angle": end_angle,
                 "distances": tuple(item[0] for item in crossings),
-                "intersection_arcs": tuple(item[1] for item in crossings)}
+                "intersection_arcs": tuple(item[1] for item in crossings),
+                "intersection_angles": crossing_angles}
 
     def _same_arc_geometry(self, record, group):
         if not self._same_measure(record["length"], group["length"]):
@@ -346,6 +352,9 @@ class Geodesic:
             return False
         if not all(self._same_measure(a, b) for a, b in
                    zip(record["distances"], group["distances"])):
+            return False
+        if not all(self._same_measure(a, b) for a, b in
+                   zip(record["intersection_angles"], group["intersection_angles"])):
             return False
         for key in ("start_angle", "end_angle"):
             a, b = record[key], group[key]
@@ -391,6 +400,7 @@ class Geodesic:
                 end_endpoint_angle=record["end_angle"],
                 intersection_distances=record["distances"],
                 intersection_arcs=tuple(arc_ids.get(i) for i in record["intersection_arcs"]),
+                intersection_angles=record["intersection_angles"],
             ))
         if saved_twist == 0.0:
             self.arcs = saved_arcs
