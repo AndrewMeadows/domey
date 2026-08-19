@@ -27,6 +27,7 @@ class ObjectBuffers:
     faces: np.ndarray       # float32, (T, 3), GL_TRIANGLES
     vertices: np.ndarray    # float32, (V, 3), GL_POINTS
     edge_groups: tuple[np.ndarray, ...] = ()
+    face_groups: tuple[np.ndarray, ...] = ()
 
 
 @dataclass
@@ -164,6 +165,25 @@ def _spherical_faces(graph, radius: float) -> np.ndarray:
     return _points_to_array(leaves, radius)
 
 
+def _spherical_faces_by_group(geodesic, radius: float) -> tuple[np.ndarray, ...]:
+    """Triangulate geodesic faces while retaining their face-group identity."""
+    graph = geodesic.geo_graph
+    grouped = [[] for _ in geodesic.getFaceGroups()]
+    verts = graph.vertices
+    for face_index, face in enumerate(graph.faces):
+        loop = [glm.normalize(verts[idx]) for idx in face.vertex_indices]
+        if len(loop) < 3:
+            continue
+        centroid = glm.normalize(sum(loop, glm.vec3(0.0)))
+        leaves = []
+        for k in range(len(loop)):
+            _subdivide_spherical(centroid, loop[k], loop[(k + 1) % len(loop)],
+                                 FACE_SUBDIVISIONS, leaves)
+        group_index = geodesic.face_group_indices[face_index]
+        grouped[group_index].extend(leaves)
+    return tuple(_points_to_array(leaves, radius) for leaves in grouped)
+
+
 def _flat_faces(graph) -> np.ndarray:
     """Triangulate each face as a flat fan from its planar centroid, keeping the
     vertices at their true positions so the faces are the polyhedron's own planes."""
@@ -210,6 +230,7 @@ def _points_to_array(points, radius) -> np.ndarray:
 
 def build_geometry(inputs: GeometryInputs) -> GeometryBuffers:
     g = get_geodesic(inputs)
+    g.getFaceGroups()
     graph = g.geo_graph
     polyhedron = g.getPolyhedron()
 
@@ -218,6 +239,7 @@ def build_geometry(inputs: GeometryInputs) -> GeometryBuffers:
         faces=_spherical_faces(graph, GEO_FACE_RADIUS),
         vertices=_vertex_points(graph, GEO_VERTEX_RADIUS),
         edge_groups=_arc_edges_by_group(g, GEO_ARC_RADIUS),
+        face_groups=_spherical_faces_by_group(g, GEO_FACE_RADIUS),
     )
     poly = ObjectBuffers(
         edges=_straight_edges(polyhedron),

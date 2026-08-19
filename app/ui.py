@@ -1,7 +1,7 @@
 from imgui_bundle import imgui
 
 from .state import AppState, ORDERS, SHAPES
-from .colors import ARC_COLORS
+from .colors import ARC_COLORS, FACE_COLORS
 
 _TWIST_MIN, _TWIST_MAX = -1.5708, 1.5708
 _TWIST_WHEEL_STEPS = 100 # coarse tuning
@@ -38,13 +38,26 @@ def _arc_part_number(group):
 
 def _draw_arcs_window(geodesic) -> None:
     imgui.set_next_window_pos(imgui.ImVec2(360, 10), imgui.Cond_.first_use_ever.value)
-    imgui.set_next_window_size(imgui.ImVec2(500, 260), imgui.Cond_.first_use_ever.value)
-    imgui.begin("Arcs")
-    imgui.text("part number")
-    imgui.separator()
-    for group_index, group in enumerate(geodesic.getArcGroups()):
-        color = ARC_COLORS[min(group_index, len(ARC_COLORS) - 1)]
-        imgui.text_colored(imgui.ImVec4(*color, 1.0), _arc_part_number(group))
+    imgui.set_next_window_size(imgui.ImVec2(650, 420), imgui.Cond_.first_use_ever.value)
+    imgui.begin("Geometry")
+    if imgui.begin_tab_bar("geometry_tabs"):
+        if imgui.begin_tab_item_simple("Arcs"):
+            imgui.text("part number")
+            imgui.separator()
+            for group_index, group in enumerate(geodesic.getArcGroups()):
+                color = ARC_COLORS[min(group_index, len(ARC_COLORS) - 1)]
+                imgui.text_colored(imgui.ImVec4(*color, 1.0), _arc_part_number(group))
+            imgui.end_tab_item()
+        if imgui.begin_tab_item_simple("Faces"):
+            imgui.text("part number (count)")
+            imgui.separator()
+            for group in geodesic.getFaceGroups():
+                parts = ".".join(f"{radians:.6f}" for radians in group.parts)
+                color = FACE_COLORS[group.id % len(FACE_COLORS)]
+                imgui.text_colored(imgui.ImVec4(*color, 1.0),
+                                   f"{group.count} {group.id}={group.face_type}:{parts}")
+            imgui.end_tab_item()
+        imgui.end_tab_bar()
     imgui.end()
 
 

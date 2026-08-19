@@ -5,7 +5,7 @@ import numpy as np
 
 from .scene import GeometryBuffers, build_geometry
 from .state import GeometryInputs
-from .colors import ARC_COLORS
+from .colors import ARC_COLORS, FACE_COLORS
 
 _SHADERS = Path(__file__).parent / "shaders"
 _INITIAL_RESERVE = 4096 * 3 * 4  # 4096 vec3 floats; grows on demand
@@ -67,7 +67,8 @@ class Renderer:
         self._geo_edges = _GLBuffer(ctx, self.line_prog)
         self._geo_edge_groups = [_GLBuffer(ctx, self.line_prog)
                                  for _ in ARC_COLORS]
-        self._geo_faces = _GLBuffer(ctx, self.tri_prog)
+        self._geo_face_groups = [_GLBuffer(ctx, self.tri_prog)
+                                 for _ in FACE_COLORS]
         self._geo_points = _GLBuffer(ctx, self.point_prog)
         self._poly_edges = _GLBuffer(ctx, self.line_prog)
         self._poly_faces = _GLBuffer(ctx, self.tri_prog)
@@ -82,7 +83,15 @@ class Renderer:
         self._geo_edges.upload(buffers.geodesic.edges)
         for buffer, data in zip(self._geo_edge_groups, buffers.geodesic.edge_groups):
             buffer.upload(data)
-        self._geo_faces.upload(buffers.geodesic.faces)
+        # Face-group count and identities can change with twist/topology. Clear
+        # every unused buffer as well as uploading current groups; otherwise
+        # old triangles remain drawable after a group disappears.
+        empty_faces = np.empty((0, 3), dtype=np.float32)
+        for index, buffer in enumerate(self._geo_face_groups):
+            data = (buffers.geodesic.face_groups[index]
+                    if index < len(buffers.geodesic.face_groups)
+                    else empty_faces)
+            buffer.upload(data)
         self._geo_points.upload(buffers.geodesic.vertices)
         self._poly_edges.upload(buffers.polyhedron.edges)
         self._poly_faces.upload(buffers.polyhedron.faces)
@@ -114,10 +123,10 @@ class Renderer:
         if geodesic.enabled:
             # Translucent only when there's a polyhedron behind it to reveal.
             geo_face = self._GEO_FACE if polyhedron.enabled else self._GEO_FACE_OPAQUE
-            objects.append((geodesic, self._geo_faces, self._geo_edges, self._geo_points,
+            objects.append((geodesic, self._geo_face_groups, self._geo_edges, self._geo_points,
                             geo_face, self._GEO_EDGE, self._GEO_POINT))
         if polyhedron.enabled:
-            objects.append((polyhedron, self._poly_faces, self._poly_edges, self._poly_points,
+            objects.append((polyhedron, (self._poly_faces,), self._poly_edges, self._poly_points,
                             self._POLY_FACE, self._POLY_EDGE, self._POLY_POINT))
 
         # Faces in two passes so a translucent object (the geodesic) blends over
@@ -132,8 +141,11 @@ class Renderer:
         #    occluded and translucent faces have something to blend against.
         for flags, faces, _e, _p, face_color, _ec, _pc in objects:
             if flags.show_faces and face_color[3] >= 1.0:
-                self._tri_color.value = face_color
-                faces.render(moderngl.TRIANGLES)
+                for face_index, face_buffer in enumerate(faces):
+                    color = (FACE_COLORS[face_index] + (face_color[3],)
+                             if faces is self._geo_face_groups else face_color)
+                    self._tri_color.value = color
+                    face_buffer.render(moderngl.TRIANGLES)
 
         # 2) Translucent faces last, with blending on and depth writes off so the
         #    surface doesn't occlude itself or hide the inner object; depth test
@@ -143,8 +155,11 @@ class Renderer:
         ctx.depth_mask = False
         for flags, faces, _e, _p, face_color, _ec, _pc in objects:
             if flags.show_faces and face_color[3] < 1.0:
-                self._tri_color.value = face_color
-                faces.render(moderngl.TRIANGLES)
+                for face_index, face_buffer in enumerate(faces):
+                    color = (FACE_COLORS[face_index] + (face_color[3],)
+                             if faces is self._geo_face_groups else face_color)
+                    self._tri_color.value = color
+                    face_buffer.render(moderngl.TRIANGLES)
         ctx.depth_mask = True
         ctx.disable(moderngl.BLEND)
         ctx.disable(moderngl.CULL_FACE)

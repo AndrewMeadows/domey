@@ -31,6 +31,14 @@ class ArcGroup:
     intersection_arcs: Tuple[Optional[str], ...]
     intersection_angles: Tuple[float, ...]
 
+
+@dataclass
+class FaceGroup:
+    id: int
+    count: int
+    face_type: str
+    parts: Tuple[float, ...]
+
 def find_nearest_index(vertices, point):
     """
     returns index of vertex closest to point
@@ -69,6 +77,8 @@ class Geodesic:
         self.geo_vertices = []
         self.arc_segments = []
         self.arc_segment_sources = []
+        self.arc_segment_numbers = []
+        self.face_parts = []
         self.arc_edge_group_indices = []
         self.arc_groups = []
         self.setTwistAngle(0.0)
@@ -105,10 +115,17 @@ class Geodesic:
         self.geo_vertices = list(polyhedron.vertices)
         self.arc_segments = [list(edge) for edge in polyhedron.edges]
         self.arc_segment_sources = list(range(len(self.arc_segments)))
+        self.arc_segment_numbers = [0] * len(self.arc_segments)
 
         self.geo_graph.vertices = self.geo_vertices
         self.geo_graph.edges = self.arc_segments
         self.geo_graph.faces = [Face(face.vertex_indices) for face in polyhedron.faces]
+        edge_numbers = {tuple(edge): index for index, edge in enumerate(polyhedron.edges)}
+        self.face_parts = []
+        for face in polyhedron.faces:
+            self.face_parts.append([
+                (edge_numbers[tuple(edge)], 0) for edge in face.getEdges()
+            ])
 
     def _computeTwistedArcs(self):
         """
@@ -201,6 +218,7 @@ class Geodesic:
     def _computeArcSegments(self):
         self.arc_segments = []
         segment_sources = []
+        segment_numbers = []
         for arc in self.arcs:
             # get the points along the arc
             #
@@ -223,18 +241,22 @@ class Geodesic:
             # the intersection points C and D coincide with the endpoints A and B,
             # collapsing A-C and D-B to zero length; the arc then contributes only
             # its single A(=C)-D(=B) edge, exactly a base-polyhedron edge.
-            for segment in ((indexA, indexC), (indexC, indexD), (indexD, indexB)):
+            for segment_number, segment in enumerate(
+                    ((indexA, indexC), (indexC, indexD), (indexD, indexB))):
                 if segment[0] != segment[1]:
                     self.arc_segments.append(sorted(segment))
                     segment_sources.append(arc.index)
+                    segment_numbers.append(segment_number)
 
         # Drop duplicate edges (sorted so direction doesn't matter), then sort.
         unique_segments = {}
-        for segment, source in zip(self.arc_segments, segment_sources):
-            unique_segments.setdefault(tuple(segment), source)
+        for segment, source, number in zip(
+                self.arc_segments, segment_sources, segment_numbers):
+            unique_segments.setdefault(tuple(segment), (source, number))
         ordered_segments = sorted(unique_segments.items())
         self.arc_segments = [list(segment) for segment, _ in ordered_segments]
-        self.arc_segment_sources = [source for _, source in ordered_segments]
+        self.arc_segment_sources = [source for _, (source, _) in ordered_segments]
+        self.arc_segment_numbers = [number for _, (_, number) in ordered_segments]
 
     def _computeGeoGraph(self):
         """
@@ -271,6 +293,13 @@ class Geodesic:
         #
         faces = self.geo_graph.faces
         trimmed_faces = []
+        trimmed_parts = []
+        edge_parts = {
+            tuple(edge): (source, number)
+            for edge, source, number in zip(
+                self.arc_segments, self.arc_segment_sources,
+                self.arc_segment_numbers)
+        }
         for face in faces:
             indices = list(face.vertex_indices)
             if len(indices) < 3:
@@ -280,6 +309,10 @@ class Geodesic:
             if len(indices) == 3:
                 # trivial case: a triangle has no mid-arc vertices to remove
                 trimmed_faces.append(face)
+                trimmed_parts.append([
+                    edge_parts.get(tuple(sorted((indices[i], indices[(i + 1) % 3]))))
+                    for i in range(3)
+                ])
                 continue
 
             # The axis of the great-circle arc through two points is their cross
@@ -311,8 +344,19 @@ class Geodesic:
                 # invariant that the lowest index leads (cyclic order is
                 # preserved).
                 trimmed_faces.append(Face(sort_indices(new_indices)))
+                retained = [i for i in range(n) if indices[i] in new_indices]
+                parts = []
+                for start in retained:
+                    end = retained[(retained.index(start) + 1) % len(retained)]
+                    position = start
+                    while position != end:
+                        parts.append(edge_parts.get(tuple(sorted(
+                            (indices[position], indices[(position + 1) % n])))))
+                        position = (position + 1) % n
+                trimmed_parts.append(parts)
 
         self.geo_graph.faces = trimmed_faces
+        self.face_parts = trimmed_parts
 
         # The local angular face rule becomes ambiguous when a twisted great
         # circle crosses the +/-pi parameter cut. Recover the unchanged mesh
@@ -341,6 +385,7 @@ class Geodesic:
                 transferred.append(Face(sort_indices(loop)))
             if len(transferred) == expected_faces:
                 self.geo_graph.faces = transferred
+                self.face_parts = list(proxy.face_parts)
 
     @staticmethod
     def _arc_vertex_keys(geodesic):
@@ -359,6 +404,70 @@ class Geodesic:
                 index = find_nearest_index(geodesic.geo_vertices, point)
                 keys.setdefault(index, (arc.index, kind, other_arc))
         return keys
+
+    @staticmethod
+    def _face_type(sides):
+        names = {
+            3: "triangle", 4: "rectangle", 5: "pentagon",
+            6: "hexagon", 7: "heptagon", 8: "octagon",
+        }
+        return names.get(sides, f"{sides}-gon")
+
+    def getFaceGroups(self):
+        """Return distinct face geometries, measured by cyclic arc lengths."""
+        segment_lengths = {}
+        if self.twist_angle == 0.0:
+            for edge, source in zip(self.arc_segments, self.arc_segment_sources):
+                segment_lengths[(source, 0)] = angle_between(
+                    self.geo_vertices[edge[0]], self.geo_vertices[edge[1]])
+        else:
+            for arc in self.arcs:
+                point_a, point_b = arc.getEndPoints()
+                point_c, point_d = arc.getIntersectionPoints()
+                if glm.distance(point_a, point_d) < glm.distance(point_a, point_c):
+                    point_c, point_d = point_d, point_c
+                points = (point_a, point_c, point_d, point_b)
+                for number in range(3):
+                    segment_lengths[(arc.index, number)] = angle_between(
+                        points[number], points[number + 1])
+
+        def canonical(lengths):
+            if not lengths:
+                return ()
+            shortest = min(lengths)
+            rotations = [lengths[i:] + lengths[:i]
+                         for i, value in enumerate(lengths)
+                         if self._same_measure(value, shortest)]
+            return min(rotations, key=lambda item: tuple(round(value, 8) for value in item))
+
+        def same_cycle(first, second):
+            if len(first) != len(second):
+                return False
+            for offset in range(len(second)):
+                rotated = second[offset:] + second[:offset]
+                if all(self._same_measure(a, b) for a, b in zip(first, rotated)):
+                    return True
+            return False
+
+        groups = []
+        self.face_group_indices = []
+        for face_index, parts in enumerate(self.face_parts):
+            normalized = canonical(tuple(
+                segment_lengths[(source, segment)]
+                for source, segment in parts
+                if source is not None and (source, segment) in segment_lengths
+            ))
+            face_type = self._face_type(len(self.geo_graph.faces[face_index].vertex_indices))
+            group = next((item for item in groups
+                          if item.face_type == face_type and
+                          same_cycle(item.parts, normalized)), None)
+            if group is None:
+                groups.append(FaceGroup(len(groups), 1, face_type, normalized))
+                self.face_group_indices.append(len(groups) - 1)
+            else:
+                group.count += 1
+                self.face_group_indices.append(group.id)
+        return groups
 
     ARC_GROUP_RELATIVE_TOLERANCE = 1.0e-3
 
@@ -444,6 +553,7 @@ class Geodesic:
                    for group_index, group in enumerate(groups)
                    for record in group["records"]}
         self.arc_groups = []
+        self.arc_group_ids = arc_ids
         group_by_arc = {}
         for group_index, group in enumerate(groups):
             record = group["records"][0]

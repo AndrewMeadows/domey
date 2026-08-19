@@ -178,3 +178,12 @@ def test_order_two_icosahedron_stable_at_pi_cut(twist):
     ]
     assert all(len(arc.intersection_points) == 2 for arc in geodesic.arcs)
     _assert_faces(geodesic.geo_graph, 122, {3: 80, 5: 12, 6: 30})
+
+
+def test_first_order_icosahedron_face_geometries_group_by_lengths():
+    geodesic = Geodesic("icosahedron")
+    geodesic.setTwistAngle(0.126)
+    groups = geodesic.getFaceGroups()
+    assert [(group.count, group.face_type) for group in groups] == [
+        (12, "pentagon"), (20, "triangle")
+    ]
