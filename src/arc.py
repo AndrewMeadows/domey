@@ -84,6 +84,10 @@ class Arc:
         self.endpointB_arc = None
         self.intersectionA_arc = None
         self.intersectionB_arc = None
+        # The two circle crossings used to split this arc.  Unlike the legacy
+        # signed A/B fields, this list does not lose a crossing when both
+        # points fall on the same side of the +/-pi parameter cut.
+        self.intersection_points = []
 
     def getAxis(self):
         return glm.normalize(glm.cross(self.pivot, self.point))
@@ -97,6 +101,8 @@ class Arc:
         return (pointA, pointB)
 
     def getIntersectionPoints(self):
+        if len(self.intersection_points) == 2:
+            return [point for point, _ in self.intersection_points]
         return [self.getPoint(self.intersectionA), self.getPoint(self.intersectionB)]
 
     def twist(self, angle):
@@ -189,26 +195,37 @@ class Arc:
         alpha = self.getProjectedDistance(intersection_point)
         beta = self.getProjectedDistance(-intersection_point)
 
-        # we want to use the shortest trim_distance
+        # We want to use the shortest trim distance on each side of the arc.
+        # A circle can be visited by several neighboring arcs while the faces
+        # are being processed.  Do not let a later, more distant intersection
+        # replace an already discovered endpoint.  This matters especially
+        # when a signed distance is close to +/-pi: a tiny round-off change can
+        # put an otherwise equivalent intersection on the other side of the
+        # signed coordinate cut.
         trim_distance = alpha
         if math.fabs(beta) < math.fabs(alpha):
             trim_distance = beta
             intersection_point = -intersection_point
         if trim_distance > 0.0:
-            self.trimA = trim_distance
-            self.endpointA_arc = other_arc.index
+            if trim_distance < self.trimA:
+                self.trimA = trim_distance
+                self.endpointA_arc = other_arc.index
         else:
-            self.trimB = trim_distance
-            self.endpointB_arc = other_arc.index
+            if trim_distance > self.trimB:
+                self.trimB = trim_distance
+                self.endpointB_arc = other_arc.index
 
-        # store intersection distance on other_arc
         intersection_distance = other_arc.getProjectedDistance(intersection_point)
+        if len(other_arc.intersection_points) < 2:
+            other_arc.intersection_points.append((intersection_point, self.index))
         if intersection_distance > 0.0:
-            other_arc.intersectionA = intersection_distance
-            other_arc.intersectionA_arc = self.index
+            if intersection_distance < other_arc.intersectionA:
+                other_arc.intersectionA = intersection_distance
+                other_arc.intersectionA_arc = self.index
         else:
-            other_arc.intersectionB = intersection_distance
-            other_arc.intersectionB_arc = self.index
+            if intersection_distance > other_arc.intersectionB:
+                other_arc.intersectionB = intersection_distance
+                other_arc.intersectionB_arc = self.index
 
     def addIntersection(self, point):
         # compute distance to point

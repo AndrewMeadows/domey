@@ -314,6 +314,52 @@ class Geodesic:
 
         self.geo_graph.faces = trimmed_faces
 
+        # The local angular face rule becomes ambiguous when a twisted great
+        # circle crosses the +/-pi parameter cut. Recover the unchanged mesh
+        # topology from a small, well-conditioned twist and transfer loops by
+        # each arc's four semantic points.
+        expected_faces = len(self.geo_graph.edges) - len(self.geo_graph.vertices) + 2
+        if len(self.geo_graph.faces) != expected_faces:
+            proxy = Geodesic(self.polyhedron.shape, self.polyhedron.order)
+            proxy.setTwistAngle(0.1)
+            current_keys = self._arc_vertex_keys(self)
+            proxy_keys = self._arc_vertex_keys(proxy)
+            current_candidates = {}
+            for index, key in current_keys.items():
+                current_candidates.setdefault(key[:2], []).append(index)
+            transferred = []
+            for face in proxy.geo_graph.faces:
+                loop = []
+                for index in face.vertex_indices:
+                    candidates = current_candidates.get(proxy_keys[index][:2])
+                    if candidates is None:
+                        candidates = range(len(self.geo_vertices))
+                    loop.append(min(candidates, key=lambda candidate:
+                                     glm.distance(self.geo_vertices[candidate],
+                                                  proxy.geo_vertices[index])))
+                loop = self.geo_graph._orient_outward(loop)
+                transferred.append(Face(sort_indices(loop)))
+            if len(transferred) == expected_faces:
+                self.geo_graph.faces = transferred
+
+    @staticmethod
+    def _arc_vertex_keys(geodesic):
+        """Map generated vertex indices to stable arc/point identities."""
+        keys = {}
+        for arc in geodesic.arcs:
+            endpoint_a, endpoint_b = arc.getEndPoints()
+            crossing_a, crossing_b = arc.getIntersectionPoints()
+            if glm.distance(endpoint_a, crossing_b) < glm.distance(endpoint_a, crossing_a):
+                crossing_a, crossing_b = crossing_b, crossing_a
+            points = (("end", arc.endpointA_arc, endpoint_a),
+                      ("end", arc.endpointB_arc, endpoint_b),
+                      ("cross", arc.intersectionA_arc, crossing_a),
+                      ("cross", arc.intersectionB_arc, crossing_b))
+            for kind, other_arc, point in points:
+                index = find_nearest_index(geodesic.geo_vertices, point)
+                keys.setdefault(index, (arc.index, kind, other_arc))
+        return keys
+
     ARC_GROUP_RELATIVE_TOLERANCE = 1.0e-3
 
     @classmethod

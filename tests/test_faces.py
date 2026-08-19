@@ -166,3 +166,15 @@ def test_icosahedron_geodesic_faces(twist):
     geodesic = Geodesic("icosahedron")
     geodesic.setTwistAngle(twist)
     _assert_faces(geodesic.geo_graph, 32, {3: 20, 5: 12})
+
+
+@pytest.mark.parametrize("twist", [1.037, 1.100])
+def test_order_two_icosahedron_stable_at_pi_cut(twist):
+    """The two arc families and face topology survive the circle-angle cut."""
+    geodesic = Geodesic("icosahedron", order=2)
+    geodesic.setTwistAngle(twist)
+    assert [(group.id, group.count) for group in geodesic.getArcGroups()] == [
+        ("A", 60), ("B", 60)
+    ]
+    assert all(len(arc.intersection_points) == 2 for arc in geodesic.arcs)
+    _assert_faces(geodesic.geo_graph, 122, {3: 80, 5: 12, 6: 30})
