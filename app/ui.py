@@ -1,6 +1,7 @@
 from imgui_bundle import imgui
 
 from .state import AppState, ORDERS, SHAPES
+from .colors import ARC_COLORS
 
 _TWIST_MIN, _TWIST_MAX = -1.5708, 1.5708
 _TWIST_WHEEL_STEPS = 100 # coarse tuning
@@ -41,8 +42,9 @@ def _draw_arcs_window(geodesic) -> None:
     imgui.begin("Arcs")
     imgui.text("part number")
     imgui.separator()
-    for group in geodesic.getArcGroups():
-        imgui.text(_arc_part_number(group))
+    for group_index, group in enumerate(geodesic.getArcGroups()):
+        color = ARC_COLORS[min(group_index, len(ARC_COLORS) - 1)]
+        imgui.text_colored(imgui.ImVec4(*color, 1.0), _arc_part_number(group))
     imgui.end()
 
 

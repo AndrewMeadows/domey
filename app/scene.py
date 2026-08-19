@@ -7,6 +7,7 @@ from pyglm import glm
 from src import Geodesic
 
 from .state import GeometryInputs
+from .colors import ARC_COLORS
 
 ARC_SAMPLES = 24          # samples along each edge arc (>= 2)
 FACE_SUBDIVISIONS = 3     # recursive splits per face triangle; 0 = flat
@@ -25,6 +26,7 @@ class ObjectBuffers:
     edges: np.ndarray       # float32, (E, 3), GL_LINES pairs
     faces: np.ndarray       # float32, (T, 3), GL_TRIANGLES
     vertices: np.ndarray    # float32, (V, 3), GL_POINTS
+    edge_groups: tuple[np.ndarray, ...] = ()
 
 
 @dataclass
@@ -87,6 +89,25 @@ def _arc_edges(graph, radius: float) -> np.ndarray:
             prev = curr
 
     return pairs
+
+
+def _arc_edges_by_group(geodesic, radius: float) -> tuple[np.ndarray, ...]:
+    """Sample geodesic edges, retaining the unique arc group's identity."""
+    grouped = [[] for _ in ARC_COLORS]
+    verts = geodesic.geo_graph.vertices
+    for (i, j), group_index in zip(geodesic.geo_graph.edges,
+                                   geodesic.arc_edge_group_indices):
+        a = glm.normalize(verts[i])
+        b = glm.normalize(verts[j])
+        prev = a * radius
+        for s in range(1, ARC_SAMPLES):
+            curr = _slerp(a, b, s / (ARC_SAMPLES - 1)) * radius
+            grouped[min(group_index, len(grouped) - 1)].extend(
+                ((prev.x, prev.y, prev.z), (curr.x, curr.y, curr.z)))
+            prev = curr
+    return tuple(np.asarray(points, dtype=np.float32).reshape((-1, 3))
+                 if points else np.empty((0, 3), dtype=np.float32)
+                 for points in grouped)
 
 
 def _straight_edges(graph) -> np.ndarray:
@@ -196,6 +217,7 @@ def build_geometry(inputs: GeometryInputs) -> GeometryBuffers:
         edges=_arc_edges(graph, GEO_ARC_RADIUS),
         faces=_spherical_faces(graph, GEO_FACE_RADIUS),
         vertices=_vertex_points(graph, GEO_VERTEX_RADIUS),
+        edge_groups=_arc_edges_by_group(g, GEO_ARC_RADIUS),
     )
     poly = ObjectBuffers(
         edges=_straight_edges(polyhedron),

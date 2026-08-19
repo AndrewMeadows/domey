@@ -68,6 +68,8 @@ class Geodesic:
         self.polyhedron = Polyhedron(shape_type, order, verbose)
         self.geo_vertices = []
         self.arc_segments = []
+        self.arc_segment_sources = []
+        self.arc_edge_group_indices = []
         self.arc_groups = []
         self.setTwistAngle(0.0)
 
@@ -102,6 +104,7 @@ class Geodesic:
         polyhedron = self.polyhedron
         self.geo_vertices = list(polyhedron.vertices)
         self.arc_segments = [list(edge) for edge in polyhedron.edges]
+        self.arc_segment_sources = list(range(len(self.arc_segments)))
 
         self.geo_graph.vertices = self.geo_vertices
         self.geo_graph.edges = self.arc_segments
@@ -197,6 +200,7 @@ class Geodesic:
 
     def _computeArcSegments(self):
         self.arc_segments = []
+        segment_sources = []
         for arc in self.arcs:
             # get the points along the arc
             #
@@ -222,10 +226,15 @@ class Geodesic:
             for segment in ((indexA, indexC), (indexC, indexD), (indexD, indexB)):
                 if segment[0] != segment[1]:
                     self.arc_segments.append(sorted(segment))
+                    segment_sources.append(arc.index)
 
         # Drop duplicate edges (sorted so direction doesn't matter), then sort.
-        unique_segments = {tuple(seg) for seg in self.arc_segments}
-        self.arc_segments = sorted(list(seg) for seg in unique_segments)
+        unique_segments = {}
+        for segment, source in zip(self.arc_segments, segment_sources):
+            unique_segments.setdefault(tuple(segment), source)
+        ordered_segments = sorted(unique_segments.items())
+        self.arc_segments = [list(segment) for segment, _ in ordered_segments]
+        self.arc_segment_sources = [source for _, source in ordered_segments]
 
     def _computeGeoGraph(self):
         """
@@ -389,6 +398,7 @@ class Geodesic:
                    for group_index, group in enumerate(groups)
                    for record in group["records"]}
         self.arc_groups = []
+        group_by_arc = {}
         for group_index, group in enumerate(groups):
             record = group["records"][0]
             group_id = chr(ord("A") + group_index)
@@ -402,6 +412,10 @@ class Geodesic:
                 intersection_arcs=tuple(arc_ids.get(i) for i in record["intersection_arcs"]),
                 intersection_angles=record["intersection_angles"],
             ))
+            for item in group["records"]:
+                group_by_arc[item["index"]] = group_index
+        self.arc_edge_group_indices = [group_by_arc[source]
+                                       for source in self.arc_segment_sources]
         if saved_twist == 0.0:
             self.arcs = saved_arcs
             self.twist_angle = saved_twist

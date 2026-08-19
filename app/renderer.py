@@ -5,6 +5,7 @@ import numpy as np
 
 from .scene import GeometryBuffers, build_geometry
 from .state import GeometryInputs
+from .colors import ARC_COLORS
 
 _SHADERS = Path(__file__).parent / "shaders"
 _INITIAL_RESERVE = 4096 * 3 * 4  # 4096 vec3 floats; grows on demand
@@ -64,6 +65,8 @@ class Renderer:
         # One buffer set per object (geodesic, polyhedron); each has edges,
         # faces and vertices.
         self._geo_edges = _GLBuffer(ctx, self.line_prog)
+        self._geo_edge_groups = [_GLBuffer(ctx, self.line_prog)
+                                 for _ in ARC_COLORS]
         self._geo_faces = _GLBuffer(ctx, self.tri_prog)
         self._geo_points = _GLBuffer(ctx, self.point_prog)
         self._poly_edges = _GLBuffer(ctx, self.line_prog)
@@ -77,6 +80,8 @@ class Renderer:
             return
         buffers = build_geometry(inputs)
         self._geo_edges.upload(buffers.geodesic.edges)
+        for buffer, data in zip(self._geo_edge_groups, buffers.geodesic.edge_groups):
+            buffer.upload(data)
         self._geo_faces.upload(buffers.geodesic.faces)
         self._geo_points.upload(buffers.geodesic.vertices)
         self._poly_edges.upload(buffers.polyhedron.edges)
@@ -90,7 +95,7 @@ class Renderer:
     # (_GEO_FACE_OPAQUE) when the geodesic is shown on its own.
     _GEO_FACE = (0.30, 0.55, 0.90, 0.65)
     _GEO_FACE_OPAQUE = (0.30, 0.55, 0.90, 1.0)
-    _GEO_EDGE = (0.95, 0.78, 0.30)
+    _GEO_EDGE = ARC_COLORS[0]
     _GEO_POINT = (0.30, 0.85, 0.95)
     _POLY_FACE = (0.55, 0.50, 0.40, 1.0)
     _POLY_EDGE = (0.55, 0.57, 0.62)
@@ -147,8 +152,13 @@ class Renderer:
         self._line_mvp.write(mvp_bytes)
         for flags, _f, edges, _p, _fc, edge_color, _pc in objects:
             if flags.show_edges:
-                self._line_color.value = edge_color
-                edges.render(moderngl.LINES)
+                if edges is self._geo_edges:
+                    for color, group_edges in zip(ARC_COLORS, self._geo_edge_groups):
+                        self._line_color.value = color
+                        group_edges.render(moderngl.LINES)
+                else:
+                    self._line_color.value = edge_color
+                    edges.render(moderngl.LINES)
 
         self._point_mvp.write(mvp_bytes)
         self._point_size.value = 9.0
